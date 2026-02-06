@@ -7,7 +7,13 @@
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
-    "prepare": "husky"
+    "prepare": "husky",
+    "setup": "./scripts/setup.sh",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "db:push": "pnpm --filter @workflow/database db:push",
+    "db:generate": "pnpm --filter @workflow/database db:generate",
+    "db:migrate": "pnpm --filter @workflow/database db:migrate"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.4.1",

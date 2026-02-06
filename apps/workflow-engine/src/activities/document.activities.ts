@@ -33,7 +33,7 @@ export async function processDocument(
 ): Promise<SelectDocument> {
   // Placeholder for actual document processing logic
   // e.g. parse content, extract text, generate thumbnails, etc.
-  return document;
+  return await Promise.resolve(document);
 }
 
 export async function markDocumentComplete(
@@ -51,6 +51,7 @@ export async function markDocumentComplete(
 
 export async function markDocumentFailed(
   document: SelectDocument,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   error: string,
 ): Promise<SelectDocument> {
   const database = getDb();
