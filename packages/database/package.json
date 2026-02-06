@@ -8,18 +8,18 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
-    "@nestjs/common": "^11.0.1",
-    "drizzle-orm": "^0.45.0",
-    "drizzle-zod": "^0.8.3",
-    "pg": "^8.11.3",
-    "uuid": "^11.1.0",
-    "zod": "^3.25.0"
+    "@nestjs/common": "catalog:",
+    "drizzle-orm": "catalog:",
+    "drizzle-zod": "catalog:",
+    "pg": "catalog:",
+    "uuid": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/pg": "^8.11.0",
-    "@types/uuid": "^10.0.0",
-    "drizzle-kit": "^0.31.0",
-    "ts-node": "^10.9.2",
-    "typescript": "5.9.2"
+    "@types/pg": "catalog:",
+    "@types/uuid": "catalog:",
+    "drizzle-kit": "catalog:",
+    "ts-node": "catalog:",
+    "typescript": "catalog:"
   }
 }
