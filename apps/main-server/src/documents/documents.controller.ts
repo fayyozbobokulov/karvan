@@ -1,5 +1,9 @@
 import { Body, Controller, Post, BadRequestException } from '@nestjs/common';
-import { insertDocumentSchema, type SelectDocument } from '@workflow/database';
+import {
+  insertDocumentSchema,
+  type SelectDocument,
+  type SelectTask,
+} from '@workflow/database';
 import { z, ZodError } from 'zod/v4';
 import { DocumentsService } from './documents.service';
 
@@ -25,6 +29,35 @@ export class DocumentsController {
   async findById(@Body() body: unknown): Promise<SelectDocument> {
     const { id } = this.parse(findByIdSchema, body);
     return this.documentsService.findById(id);
+  }
+
+  @Post('scenario')
+  async createScenario(@Body() body: unknown): Promise<SelectDocument> {
+    const schema = z.object({
+      title: z.string(),
+      authorId: z.string(),
+      assigneeId: z.string(),
+    });
+    return this.documentsService.createGovernmentScenario(
+      this.parse(schema, body),
+    );
+  }
+
+  @Post('action')
+  async handleAction(@Body() body: unknown): Promise<{ success: true }> {
+    const schema = z.object({
+      documentId: z.string(),
+      taskId: z.string(),
+      action: z.enum(['sign', 'reject']),
+      comment: z.string().optional(),
+    });
+    await this.documentsService.handleAction(this.parse(schema, body));
+    return { success: true };
+  }
+
+  @Post('tasks')
+  async findAllTasks(): Promise<SelectTask[]> {
+    return this.documentsService.findAllTasks();
   }
 
   private parse<T>(schema: z.ZodType<T>, body: unknown): T {

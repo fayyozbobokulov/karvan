@@ -6,6 +6,27 @@ import { v7 as uuidv7 } from "uuid";
 const { createInsertSchema, createSelectSchema } = createSchemaFactory();
 
 // ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
+
+export const users = pgTable("users", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => uuidv7()),
+  name: text("name").notNull(),
+  role: text("role").notNull(),
+  email: text("email").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertUserSchema = createInsertSchema(users);
+export const selectUserSchema = createSelectSchema(users);
+
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type SelectUser = z.infer<typeof selectUserSchema>;
+
+// ---------------------------------------------------------------------------
 // Workflows
 // ---------------------------------------------------------------------------
 
@@ -64,10 +85,18 @@ export const documents = pgTable("documents", {
   mimeType: text("mime_type").notNull(),
   sizeBytes: integer("size_bytes"),
   status: text("status", {
-    enum: ["pending", "processing", "completed", "failed"],
+    enum: [
+      "pending",
+      "processing",
+      "completed",
+      "failed",
+      "signed",
+      "rejected",
+    ],
   })
     .default("pending")
     .notNull(),
+  authorId: text("author_id").references(() => users.id),
   metadata: jsonb("metadata").$type<z.infer<typeof documentMetadataSchema>>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -82,3 +111,34 @@ export const selectDocumentSchema = createSelectSchema(documents, {
 
 export type InsertDocument = z.infer<typeof insertDocumentSchema>;
 export type SelectDocument = z.infer<typeof selectDocumentSchema>;
+
+// ---------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------
+
+export const tasks = pgTable("tasks", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => uuidv7()),
+  documentId: text("document_id")
+    .notNull()
+    .references(() => documents.id),
+  assigneeId: text("assignee_id")
+    .notNull()
+    .references(() => users.id),
+  type: text("type").notNull(), // e.g., 'signing', 'review'
+  status: text("status", {
+    enum: ["pending", "completed", "rejected"],
+  })
+    .default("pending")
+    .notNull(),
+  comment: text("comment"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertTaskSchema = createInsertSchema(tasks);
+export const selectTaskSchema = createSelectSchema(tasks);
+
+export type InsertTask = z.infer<typeof insertTaskSchema>;
+export type SelectTask = z.infer<typeof selectTaskSchema>;

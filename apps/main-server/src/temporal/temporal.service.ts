@@ -38,4 +38,33 @@ export class TemporalService implements OnModuleInit {
 
     return handle.firstExecutionRunId;
   }
+
+  async startDynamicWorkflow(
+    document: SelectDocument,
+    blueprint: any,
+  ): Promise<string> {
+    const workflowId = `gov-document-${document.id}`;
+
+    const handle = await this.client.workflow.start('dynamicWorkflow', {
+      taskQueue: TASK_QUEUES.DOCUMENT_PROCESSING,
+      workflowId,
+      args: [document, blueprint],
+    });
+
+    this.logger.log(
+      `Started dynamic workflow ${workflowId} (runId: ${handle.firstExecutionRunId})`,
+    );
+
+    return handle.firstExecutionRunId;
+  }
+
+  async sendActionSignal(
+    workflowId: string,
+    signalName: 'sign' | 'reject',
+    data: any,
+  ): Promise<void> {
+    const handle = this.client.workflow.getHandle(workflowId);
+    await handle.signal(signalName, data);
+    this.logger.log(`Sent signal "${signalName}" to workflow ${workflowId}`);
+  }
 }
