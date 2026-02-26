@@ -1,73 +1,107 @@
-import { Body, Controller, Post, BadRequestException } from '@nestjs/common';
 import {
-  insertDocumentSchema,
-  type SelectDocument,
-  type SelectTask,
-} from '@workflow/database';
-import { z, ZodError } from 'zod/v4';
+  Body,
+  Controller,
+  Post,
+  Get,
+  Param,
+  BadRequestException,
+} from '@nestjs/common';
 import { DocumentsService } from './documents.service';
+import { TemporalService } from '../temporal/temporal.service';
+import { TASK_QUEUES } from '@workflow/database';
 
-const findByIdSchema = z.object({
-  id: z.string(),
-});
+class SubmitDocumentDto {
+  title: string;
+  authorId: string;
+  fileUrl: string;
+  metadata: any;
+  approvalLevels?: string[];
+}
+
+class ActionDto {
+  action: string;
+  comment?: string;
+}
 
 @Controller('documents')
 export class DocumentsController {
-  constructor(private readonly documentsService: DocumentsService) {}
+  constructor(
+    private readonly documentsService: DocumentsService,
+    private readonly temporalClient: TemporalService,
+  ) {}
 
-  @Post('create')
-  async create(@Body() body: unknown): Promise<SelectDocument> {
-    return this.documentsService.create(this.parse(insertDocumentSchema, body));
-  }
-
-  @Post('list')
-  async findAll(): Promise<SelectDocument[]> {
-    return this.documentsService.findAll();
-  }
-
-  @Post('get')
-  async findById(@Body() body: unknown): Promise<SelectDocument> {
-    const { id } = this.parse(findByIdSchema, body);
-    return this.documentsService.findById(id);
-  }
-
-  @Post('scenario')
-  async createScenario(@Body() body: unknown): Promise<SelectDocument> {
-    const schema = z.object({
-      title: z.string(),
-      authorId: z.string(),
-      assigneeId: z.string(),
-    });
-    return this.documentsService.createGovernmentScenario(
-      this.parse(schema, body),
+  @Post('submit')
+  async submitDocument(@Body() dto: SubmitDocumentDto) {
+    const doc = await this.documentsService.create(dto);
+    const blueprint = this.documentsService.buildGovernmentBlueprint(
+      dto.approvalLevels,
     );
+
+    const handle = await this.temporalClient
+      .getClient()
+      .workflow.start('governmentDocumentWorkflow', {
+        taskQueue: TASK_QUEUES.DOCUMENT_PROCESSING,
+        workflowId: `gov-doc-${doc.id}`,
+        args: [
+          {
+            documentId: doc.id,
+            blueprint,
+            authorId: dto.authorId,
+          },
+        ],
+      });
+
+    return {
+      documentId: doc.id,
+      workflowId: handle.workflowId,
+      status: 'SUBMITTED',
+    };
   }
 
-  @Post('action')
-  async handleAction(@Body() body: unknown): Promise<{ success: true }> {
-    const schema = z.object({
-      documentId: z.string(),
-      taskId: z.string(),
-      action: z.enum(['sign', 'reject']),
-      comment: z.string().optional(),
-    });
-    await this.documentsService.handleAction(this.parse(schema, body));
-    return { success: true };
-  }
+  @Post(':id/action')
+  async performAction(@Param('id') documentId: string, @Body() dto: ActionDto) {
+    const handle = this.temporalClient
+      .getClient()
+      .workflow.getHandle(`gov-doc-${documentId}`);
 
-  @Post('tasks')
-  async findAllTasks(): Promise<SelectTask[]> {
-    return this.documentsService.findAllTasks();
-  }
+    const status: any = await handle.query('getStatus');
 
-  private parse<T>(schema: z.ZodType<T>, body: unknown): T {
-    try {
-      return schema.parse(body);
-    } catch (error) {
-      if (error instanceof ZodError) {
-        throw new BadRequestException(error.issues);
-      }
-      throw error;
+    switch (status.currentStage) {
+      case 'in_review':
+        await handle.signal('reviewDecision', {
+          action: dto.action,
+          comment: dto.comment,
+        });
+        break;
+      case 'in_approval':
+        await handle.signal('approvalDecision', {
+          action: dto.action,
+          comment: dto.comment,
+        });
+        break;
+      case 'awaiting_signature':
+        await handle.signal('signDecision', { action: dto.action });
+        break;
+      default:
+        throw new BadRequestException(
+          `Cannot perform action in stage: ${status.currentStage}`,
+        );
     }
+
+    return { status: 'ACTION_RECORDED', action: dto.action };
+  }
+
+  @Get(':id/status')
+  async getStatus(@Param('id') documentId: string) {
+    const handle = this.temporalClient
+      .getClient()
+      .workflow.getHandle(`gov-doc-${documentId}`);
+
+    return await handle.query('getStatus');
+  }
+
+  @Get(':id/audit')
+  async getAuditTrail(@Param('id') documentId: string) {
+    return this.documentsService.getAuditLogs(documentId);
   }
 }

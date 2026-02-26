@@ -20,6 +20,10 @@ export class TemporalService implements OnModuleInit {
     this.logger.log(`Connected to Temporal at ${address}`);
   }
 
+  getClient(): Client {
+    return this.client;
+  }
+
   async startDocumentWorkflow(document: SelectDocument): Promise<string> {
     const workflowId = `document-${document.id}`;
 

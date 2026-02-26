@@ -1,13 +1,14 @@
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
+import { v4 as uuid } from 'uuid';
 import {
   documents,
-  users,
   tasks,
-  type SelectDocument,
-  type SelectUser,
-  type SelectTask,
+  auditLogs,
+  documentRegistry,
+  distributions,
+  users,
 } from '@workflow/database';
 
 let db: ReturnType<typeof drizzle> | null = null;
@@ -22,108 +23,134 @@ function getDb() {
   return db;
 }
 
-export async function notifyUser(params: { userId: string; message: string }) {
+export async function validateDocument(input: { documentId: string }) {
   const database = getDb();
-  const [user] = await database
+  const [doc] = await database
+    .select()
+    .from(documents)
+    .where(eq(documents.id, input.documentId));
+
+  const errors: string[] = [];
+  if (!doc) errors.push('Document not found');
+  if (!doc?.fileUrl) errors.push('No file attached');
+  if (!doc?.title) errors.push('Title is required');
+  if (!doc?.metadata) errors.push('Metadata is required');
+
+  return { isValid: errors.length === 0, errors };
+}
+
+export async function createTask(input: {
+  documentId: string;
+  assigneeRole: string;
+  actionType: string;
+}) {
+  const database = getDb();
+
+  const [assignee] = await database
     .select()
     .from(users)
-    .where(eq(users.id, params.userId));
+    .where(eq(users.role, input.assigneeRole));
 
-  if (!user) {
-    throw new Error(`User ${params.userId} not found`);
-  }
+  if (!assignee)
+    throw new Error(`No user found with role: ${input.assigneeRole}`);
 
-  // Simulate notification (log to console)
-  console.log(
-    `[NOTIFICATION] To: ${user.email} (${user.name}) - Message: ${params.message}`,
-  );
-  return { sent: true, userId: params.userId };
-}
-
-export async function createTask(params: {
-  documentId: string;
-  assigneeId: string;
-  type: string;
-}): Promise<SelectTask> {
-  const database = getDb();
-
-  const [task] = await database
-    .insert(tasks)
-    .values({
-      documentId: params.documentId,
-      assigneeId: params.assigneeId,
-      type: params.type,
-      status: 'pending',
-    })
-    .returning();
-
-  // Notify the assignee
-  await notifyUser({
-    userId: params.assigneeId,
-    message: `You have a new ${params.type} task for document ${params.documentId}`,
+  const taskId = uuid();
+  await database.insert(tasks).values({
+    id: taskId,
+    documentId: input.documentId,
+    assigneeId: assignee.id,
+    type: input.actionType, // For backwards compatibility
+    actionType: input.actionType as any,
+    status: 'pending',
   });
 
-  return task;
+  return { id: taskId, assigneeId: assignee.id };
 }
 
-export async function signDocument(params: {
+export async function completeTask(input: { taskId: string; action: string }) {
+  const database = getDb();
+  await database
+    .update(tasks)
+    .set({ status: input.action as any, completedAt: new Date() })
+    .where(eq(tasks.id, input.taskId));
+}
+
+export async function updateDocumentStatus(input: {
   documentId: string;
-  taskId: string;
+  status: any;
 }) {
   const database = getDb();
-
-  await database.transaction(async (tx) => {
-    // 1. Update task
-    await tx
-      .update(tasks)
-      .set({ status: 'completed', updatedAt: new Date() })
-      .where(eq(tasks.id, params.taskId));
-
-    // 2. Update document status
-    await tx
-      .update(documents)
-      .set({ status: 'signed', updatedAt: new Date() })
-      .where(eq(documents.id, params.documentId));
-  });
-
-  return { success: true };
-}
-
-export async function rejectDocument(params: {
-  documentId: string;
-  taskId: string;
-  comment: string;
-}) {
-  const database = getDb();
-
-  await database.transaction(async (tx) => {
-    // 1. Update task
-    await tx
-      .update(tasks)
-      .set({
-        status: 'rejected',
-        comment: params.comment,
-        updatedAt: new Date(),
-      })
-      .where(eq(tasks.id, params.taskId));
-
-    // 2. Update document status
-    await tx
-      .update(documents)
-      .set({ status: 'rejected', updatedAt: new Date() })
-      .where(eq(documents.id, params.documentId));
-  });
-
-  return { success: true };
-}
-
-export async function archiveDocument(documentId: string) {
-  const database = getDb();
-
   await database
     .update(documents)
-    .set({ status: 'completed', updatedAt: new Date() })
-    .where(eq(documents.id, documentId));
+    .set({ status: input.status, updatedAt: new Date() })
+    .where(eq(documents.id, input.documentId));
+}
 
-  return { archived: true };
+export async function signDocument(input: { documentId: string }) {
+  const database = getDb();
+  await database
+    .update(documents)
+    .set({ status: 'signed', signedAt: new Date(), updatedAt: new Date() })
+    .where(eq(documents.id, input.documentId));
+}
+
+export async function registerDocument(input: { documentId: string }) {
+  const database = getDb();
+  const year = new Date().getFullYear();
+
+  const countRes = await database.select().from(documentRegistry);
+  const seq = String(countRes.length + 1).padStart(5, '0');
+  const registryNumber = `GOV-${year}-${seq}`;
+
+  await database.insert(documentRegistry).values({
+    documentId: input.documentId,
+    registryNumber,
+    registeredBy: 'system',
+  });
+
+  return { registryNumber };
+}
+
+export async function distributeDocument(input: {
+  documentId: string;
+  registryNumber: string;
+}) {
+  const database = getDb();
+  const allUsers = await database.select().from(users);
+
+  for (const user of allUsers) {
+    await database.insert(distributions).values({
+      documentId: input.documentId,
+      recipientId: user.id,
+      channel: 'portal',
+    });
+  }
+
+  return { distributedTo: allUsers.length };
+}
+
+export async function recordAuditLog(input: {
+  documentId: string;
+  fromStatus: string;
+  toStatus: string;
+  action: string;
+}) {
+  const database = getDb();
+  await database.insert(auditLogs).values({
+    documentId: input.documentId,
+    action: input.action,
+    fromStatus: input.fromStatus,
+    toStatus: input.toStatus,
+  });
+}
+
+export async function sendNotification(input: {
+  userId: string;
+  message: string;
+}) {
+  console.log(`[NOTIFICATION] To: ${input.userId} — ${input.message}`);
+}
+
+export async function escalateTask(input: { taskId: string; reason: string }) {
+  console.log(`[ESCALATION] Task ${input.taskId} escalated: ${input.reason}`);
 }

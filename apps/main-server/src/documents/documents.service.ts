@@ -4,6 +4,7 @@ import {
   DRIZZLE,
   documents,
   tasks,
+  auditLogs,
   type InsertDocument,
   type SelectDocument,
   type SelectTask,
@@ -19,91 +20,40 @@ export class DocumentsService {
     private readonly temporalService: TemporalService,
   ) {}
 
-  async create(data: InsertDocument): Promise<SelectDocument> {
-    const [document] = await this.db.insert(documents).values(data).returning();
-
-    await this.temporalService.startDocumentWorkflow(
-      document as SelectDocument,
-    );
-
-    return document as SelectDocument;
-  }
-
-  async createGovernmentScenario(data: {
+  async create(data: {
     title: string;
     authorId: string;
-    assigneeId: string;
+    fileUrl: string;
+    metadata: any;
   }): Promise<SelectDocument> {
     const [document] = await this.db
       .insert(documents)
       .values({
         title: data.title,
         authorId: data.authorId,
-        fileUrl: 'http://example.com/doc.pdf',
+        fileUrl: data.fileUrl,
+        metadata: data.metadata,
         mimeType: 'application/pdf',
         status: 'pending',
       })
       .returning();
 
-    const blueprint = {
+    return document as SelectDocument;
+  }
+
+  buildGovernmentBlueprint(approvalLevels?: string[]): any {
+    return {
+      workflowId: 'gov-doc-exchange',
       version: '1.0',
-      steps: [
-        {
-          id: 'step1',
-          type: 'assignment',
-          config: { assigneeId: data.assigneeId, taskType: 'signing' },
-          next: 'step2',
-        },
-        {
-          id: 'step2',
-          type: 'archive',
-        },
-      ],
+      steps: [{ type: 'automatic', id: 'validate' }],
     };
-
-    await this.temporalService.startDynamicWorkflow(
-      document as SelectDocument,
-      blueprint,
-    );
-
-    return document as SelectDocument;
   }
 
-  async handleAction(data: {
-    documentId: string;
-    taskId: string;
-    action: 'sign' | 'reject';
-    comment?: string;
-  }): Promise<void> {
-    const workflowId = `gov-document-${data.documentId}`;
-    await this.temporalService.sendActionSignal(workflowId, data.action, {
-      taskId: data.taskId,
-      comment: data.comment,
-    });
-  }
-
-  async findAll(): Promise<SelectDocument[]> {
-    const results = await this.db.select().from(documents);
-    return results as SelectDocument[];
-  }
-
-  async findById(id: string): Promise<SelectDocument> {
-    const [document] = await this.db
+  async getAuditLogs(documentId: string) {
+    return await this.db
       .select()
-      .from(documents)
-      .where(eq(documents.id, id));
-
-    if (!document) {
-      throw new NotFoundException(`Document with id "${id}" not found`);
-    }
-
-    return document as SelectDocument;
-  }
-
-  async findAllTasks(): Promise<SelectTask[]> {
-    return (await this.db
-      .select()
-      .from(tasks)
-      .orderBy(desc(tasks.createdAt))) as SelectTask[];
+      .from(auditLogs)
+      .where(eq(auditLogs.documentId, documentId))
+      .orderBy(desc(auditLogs.createdAt));
   }
 }

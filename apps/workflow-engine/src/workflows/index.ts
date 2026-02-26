@@ -1,2 +1,2 @@
 export * from './document.workflow';
-export * from './dynamic.workflow';
+export * from './government-document.workflow';
