@@ -335,3 +335,76 @@ h3 {
   background-color: var(--status-blue);
   border: 2px solid var(--surface-color);
 }
+
+/* ── Navigation Section Labels ─────────────────────────── */
+
+.nav-section-label {
+  padding: 0.5rem 1.5rem 0.25rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  opacity: 0.6;
+  margin-top: 0.75rem;
+}
+
+.nav-section-label:first-child {
+  margin-top: 0;
+}
+
+/* ── Flow Status Badges ────────────────────────────────── */
+
+.badge-running {
+  background-color: var(--status-blue-bg);
+  color: var(--status-blue);
+}
+
+.badge-waiting {
+  background-color: var(--status-amber-bg);
+  color: var(--status-amber);
+}
+
+.badge-active {
+  background-color: var(--status-blue-bg);
+  color: var(--status-blue);
+}
+
+.badge-cancelled {
+  background-color: var(--status-gray-bg);
+  color: var(--status-gray);
+}
+
+.badge-skipped {
+  background-color: var(--status-gray-bg);
+  color: var(--status-gray);
+}
+
+/* ── Spin animation for loading ────────────────────────── */
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ── Table styles ──────────────────────────────────────── */
+
+table {
+  border-spacing: 0;
+}
+
+th, td {
+  text-align: left;
+}
+
+/* ── Responsive adjustments ────────────────────────────── */
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 220px;
+  }
+
+  .card-grid {
+    grid-template-columns: 1fr;
+  }
+}

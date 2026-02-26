@@ -2,7 +2,6 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { NativeConnection, Worker } from '@temporalio/worker';
 import { TASK_QUEUES } from '@workflow/database';
 import * as activities from '../activities';
-import * as workflows from '../workflows';
 
 @Injectable()
 export class WorkerService implements OnModuleInit {
@@ -13,7 +12,8 @@ export class WorkerService implements OnModuleInit {
 
     const connection = await NativeConnection.connect({ address });
 
-    const worker = await Worker.create({
+    // Existing worker for document processing (backward compatibility)
+    const docWorker = await Worker.create({
       connection,
       namespace: 'default',
       taskQueue: TASK_QUEUES.DOCUMENT_PROCESSING,
@@ -25,7 +25,21 @@ export class WorkerService implements OnModuleInit {
       `Worker started on task queue "${TASK_QUEUES.DOCUMENT_PROCESSING}"`,
     );
 
-    // Run worker in background — don't block NestJS bootstrap
-    void worker.run();
+    void docWorker.run();
+
+    // New worker for flow execution (unit-based workflow engine)
+    const flowWorker = await Worker.create({
+      connection,
+      namespace: 'default',
+      taskQueue: TASK_QUEUES.FLOW_EXECUTION,
+      workflowsPath: require.resolve('../workflows'),
+      activities,
+    });
+
+    this.logger.log(
+      `Worker started on task queue "${TASK_QUEUES.FLOW_EXECUTION}"`,
+    );
+
+    void flowWorker.run();
   }
 }

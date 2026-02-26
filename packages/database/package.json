@@ -9,7 +9,8 @@
   "scripts": {
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:seed": "ts-node src/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "catalog:",
