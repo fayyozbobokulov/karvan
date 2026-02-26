@@ -154,7 +154,7 @@ function App() {
     const interval = setInterval(() => {
       fetchFlowData();
       fetchLegacyData();
-    }, 3000);
+    }, 10000);
     return () => clearInterval(interval);
   }, [activeUserId]);
 

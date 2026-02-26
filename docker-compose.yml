@@ -38,6 +38,8 @@ services:
       - POSTGRES_PWD=password
       - POSTGRES_SEEDS=postgres
       - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    volumes:
+      - ./config/dynamicconfig:/etc/temporal/config/dynamicconfig
     depends_on:
       - postgres
     networks:
