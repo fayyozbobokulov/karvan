@@ -630,66 +630,173 @@ async function seed() {
     },
   ];
 
-  // ── 3. Incoming Letter Flow ────────────────────────────────
+  // ── 3. Incoming Letter Flow (Kiruvchi hujjat) ─────────────
+  //
+  // Step 1: Chancellery creates and registers the document
+  // Step 2: Chancellery sends to Manager → Manager signs with resolution
+  // Step 3: Manager puts resolution and creates tasks for staff
+  // Step 4: Staff execute their tasks in parallel
+  // Step 5: Manager/Controller reviews staff responses (accept/reject)
+  // Step 6: Manager responds to own task after accepting staff work
+  // Step 7: Controller reviews Manager's response (accept/reject)
+  //
   const incomingLetterGraph: FlowNode[] = [
+    // ── Step 1: Chancellery creates document ──────────────────
     {
       id: "1",
       unit: "doc:incoming_letter",
-      label: "Register Incoming Letter",
+      label: "Kanselyariya: Hujjat yaratish",
       next: ["2"],
     },
     {
       id: "2",
       unit: "auto:register_number",
-      label: "Generate Registry Number",
+      label: "Registratsiya raqami berish",
       next: ["3"],
     },
+
+    // ── Step 2: Chancellery sends to Manager for resolution ───
     {
       id: "3",
-      unit: "cond:urgency_check",
-      label: "Is Urgent?",
-      next: { true: ["4"], false: ["5"] },
+      unit: "action:sign",
+      label: "Rahbar: Rezolyutsiya qo'yib imzolash",
+      config: { assignee: "manager", allowedActions: ["SIGN", "REJECT"] },
+      next: ["4"],
     },
     {
       id: "4",
-      unit: "notify:inform",
-      label: "Urgent: Notify Director",
-      config: { recipients: "director", message: "Urgent incoming letter" },
-      next: ["5"],
+      unit: "cond:action_result",
+      label: "Rahbar qarori?",
+      next: { SIGN: ["5"], REJECT: ["R1"] },
     },
+
+    // ── Step 3: Manager creates tasks for staff (parallel) ────
     {
       id: "5",
-      unit: "task:review_and_assign",
-      label: "Director Reviews & Assigns",
-      config: { assignee: "director" },
-      next: ["6"],
+      unit: "parallel:post_sign_tasks",
+      label: "Xodimlarga topshiriqlar",
+      next: ["6", "7", "8"],
     },
+
+    // ── Step 4: Staff execute tasks in parallel ───────────────
     {
       id: "6",
       unit: "task:execute_resolution",
-      label: "Execute Resolution",
-      config: { assignee: "responsible_person" },
-      next: ["7"],
-    },
-    {
-      id: "7",
-      unit: "action:acknowledge",
-      label: "Director Acknowledges Completion",
-      config: { assignee: "director" },
-      next: ["8"],
-    },
-    {
-      id: "8",
-      unit: "notify:flow_complete",
-      label: "Notify: Letter Processed",
-      config: { recipients: "secretary" },
+      label: "Xodim 1: Topshiriqni bajarish",
+      config: { assignee: "worker_1", deadline: "120h" },
       next: ["9"],
     },
     {
+      id: "7",
+      unit: "task:execute_resolution",
+      label: "Xodim 2: Topshiriqni bajarish",
+      config: { assignee: "worker_2", deadline: "120h" },
+      next: ["9"],
+    },
+    {
+      id: "8",
+      unit: "task:execute_resolution",
+      label: "Xodim 3: Topshiriqni bajarish",
+      config: { assignee: "worker_3", deadline: "120h" },
+      next: ["9"],
+    },
+
+    // Wait for all staff to complete
+    {
       id: "9",
+      unit: "gate:wait_all",
+      label: "Barcha xodimlar tayyor bo'lishini kutish",
+      next: ["10"],
+    },
+
+    // ── Step 5: Manager/Controller reviews staff responses ────
+    {
+      id: "10",
+      unit: "action:approve",
+      label: "Nazoratchi: Xodimlar javoblarini tekshirish",
+      config: { assignee: "controller", allowedActions: ["APPROVE", "REJECT"] },
+      next: ["11"],
+    },
+    {
+      id: "11",
+      unit: "cond:action_result",
+      label: "Nazoratchi qarori?",
+      next: { APPROVE: ["12"], REJECT: ["RC1"] },
+    },
+
+    // ── Step 6: Manager responds to own task ──────────────────
+    {
+      id: "12",
+      unit: "task:execute_resolution",
+      label: "Rahbar: O'z topshirig'iga javob berish",
+      config: { assignee: "manager", deadline: "48h" },
+      next: ["13"],
+    },
+
+    // ── Step 7: Controller reviews Manager's response ─────────
+    {
+      id: "13",
+      unit: "action:approve",
+      label: "Nazoratchi: Rahbar javobini tekshirish",
+      config: { assignee: "controller", allowedActions: ["APPROVE", "REJECT"] },
+      next: ["14"],
+    },
+    {
+      id: "14",
+      unit: "cond:action_result",
+      label: "Yakuniy qaror?",
+      next: { APPROVE: ["15"], REJECT: ["RC2"] },
+    },
+
+    // ── End: Notify and archive ───────────────────────────────
+    {
+      id: "15",
+      unit: "notify:flow_complete",
+      label: "Hujjat qayta ishlandi",
+      config: {
+        recipients: "secretary",
+        message: "Kiruvchi hujjat yakunlandi",
+      },
+      next: ["16"],
+    },
+    {
+      id: "16",
       unit: "auto:archive",
-      label: "Archive Letter",
+      label: "Arxivlash",
       next: [],
+    },
+
+    // ── Error/loop paths ──────────────────────────────────────
+    {
+      id: "R1",
+      unit: "notify:rejection",
+      label: "Rad etildi",
+      config: { recipients: "secretary", message: "Rahbar hujjatni rad etdi" },
+      next: [],
+      isTerminal: true,
+      isError: true,
+    },
+    {
+      id: "RC1",
+      unit: "notify:changes_requested",
+      label: "Xodimlar javoblari qaytarildi",
+      config: {
+        recipients: "manager",
+        message: "Xodimlar javoblari qabul qilinmadi",
+      },
+      next: ["5"],
+      isLoop: true,
+    },
+    {
+      id: "RC2",
+      unit: "notify:changes_requested",
+      label: "Rahbar javobi qaytarildi",
+      config: {
+        recipients: "manager",
+        message: "Rahbar javobi qabul qilinmadi",
+      },
+      next: ["12"],
+      isLoop: true,
     },
   ];
 
@@ -840,15 +947,22 @@ async function seed() {
     },
     {
       id: "incoming_letter",
-      name: "Incoming Letter",
+      name: "Kiruvchi hujjat",
       description:
-        "Process incoming correspondence: register, review, assign, execute",
+        "Kiruvchi hujjat: ro'yxatga olish → rezolyutsiya → topshiriqlar → nazorat → arxiv",
       icon: "📨",
       color: "#f59e0b",
       category: "admin",
-      roles: ["secretary", "director", "responsible_person"],
+      roles: [
+        "secretary",
+        "manager",
+        "worker_1",
+        "worker_2",
+        "worker_3",
+        "controller",
+      ],
       graph: incomingLetterGraph,
-      estimatedDuration: "3-7 days",
+      estimatedDuration: "5-14 days",
     },
     {
       id: "procurement",
