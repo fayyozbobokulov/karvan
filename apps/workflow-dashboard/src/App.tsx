@@ -74,6 +74,18 @@ interface FlowTask {
   createdAt: string;
 }
 
+interface AppNotification {
+  id: string;
+  recipientId: string;
+  type: string;
+  title: string;
+  message: string;
+  flowInstanceId: string | null;
+  flowDefinitionId: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
 const API_BASE = "http://localhost:4000/documents";
 const FLOW_API_BASE = "http://localhost:4000/api";
 
@@ -98,6 +110,10 @@ function App() {
   const [flowDefinitions, setFlowDefinitions] = useState<FlowDefinition[]>([]);
   const [flowInstances, setFlowInstances] = useState<FlowInstance[]>([]);
   const [flowTasks, setFlowTasks] = useState<FlowTask[]>([]);
+  const [appNotifications, setAppNotifications] = useState<AppNotification[]>(
+    [],
+  );
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [selectedFlowDef, setSelectedFlowDef] = useState<FlowDefinition | null>(
     null,
   );
@@ -132,15 +148,27 @@ function App() {
 
   const fetchFlowData = async () => {
     try {
-      const [defsRes, instancesRes, tasksRes] = await Promise.all([
-        fetch(`${FLOW_API_BASE}/flow-definitions`),
-        fetch(`${FLOW_API_BASE}/flow-instances`),
-        fetch(`${FLOW_API_BASE}/my-tasks?userId=${activeUserId}`),
-      ]);
+      const [defsRes, instancesRes, tasksRes, notifsRes, unreadRes] =
+        await Promise.all([
+          fetch(`${FLOW_API_BASE}/flow-definitions`),
+          fetch(`${FLOW_API_BASE}/flow-instances`),
+          fetch(`${FLOW_API_BASE}/my-tasks?userId=${activeUserId}`),
+          fetch(
+            `${FLOW_API_BASE}/notifications?userId=${activeUserId}&limit=50`,
+          ),
+          fetch(
+            `${FLOW_API_BASE}/notifications/unread-count?userId=${activeUserId}`,
+          ),
+        ]);
 
       if (defsRes.ok) setFlowDefinitions(await defsRes.json());
       if (instancesRes.ok) setFlowInstances(await instancesRes.json());
       if (tasksRes.ok) setFlowTasks(await tasksRes.json());
+      if (notifsRes.ok) setAppNotifications(await notifsRes.json());
+      if (unreadRes.ok) {
+        const data = await unreadRes.json();
+        setUnreadNotificationCount(data.count);
+      }
     } catch (error) {
       console.error("Error fetching flow data:", error);
     } finally {
@@ -276,6 +304,40 @@ function App() {
     setCurrentView("flow-detail");
   };
 
+  // ── Notification handlers ─────────────────────────────────────────────
+
+  const handleMarkNotificationRead = async (notificationId: string) => {
+    try {
+      await fetch(`${FLOW_API_BASE}/notifications/${notificationId}/read`, {
+        method: "PATCH",
+      });
+      setAppNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n)),
+      );
+      setUnreadNotificationCount((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+    }
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    try {
+      await fetch(
+        `${FLOW_API_BASE}/notifications/read-all?userId=${activeUserId}`,
+        { method: "PATCH" },
+      );
+      setAppNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadNotificationCount(0);
+    } catch (error) {
+      console.error("Error marking all as read:", error);
+    }
+  };
+
+  const handleViewFlowFromNotification = (flowInstanceId: string) => {
+    setSelectedFlowInstanceId(flowInstanceId);
+    setCurrentView("flow-detail");
+  };
+
   // ── Render ──────────────────────────────────────────────────────────
 
   if (loading) {
@@ -301,6 +363,11 @@ function App() {
         activeUserId={activeUserId}
         setActiveUserId={setActiveUserId}
         flowTaskCount={flowTasks.length}
+        notifications={appNotifications}
+        unreadNotificationCount={unreadNotificationCount}
+        onMarkNotificationRead={handleMarkNotificationRead}
+        onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
+        onViewFlowFromNotification={handleViewFlowFromNotification}
       />
 
       <main className="main-content">

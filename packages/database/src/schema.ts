@@ -465,3 +465,43 @@ export const selectFlowAuditLogSchema = createSelectSchema(flowAuditLog);
 
 export type InsertFlowAuditLog = z.infer<typeof insertFlowAuditLogSchema>;
 export type SelectFlowAuditLog = z.infer<typeof selectFlowAuditLogSchema>;
+
+// ---------------------------------------------------------------------------
+// Notifications — In-app notification records
+// ---------------------------------------------------------------------------
+
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "task_assigned",
+  "action_completed",
+  "flow_completed",
+  "flow_failed",
+  "rejection",
+  "request_change",
+  "timeout",
+  "info",
+]);
+
+export const notifications = pgTable("notifications", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => uuidv7()),
+  recipientId: text("recipient_id")
+    .notNull()
+    .references(() => users.id),
+  type: notificationTypeEnum("type").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  flowInstanceId: text("flow_instance_id").references(() => flowInstances.id),
+  flowDefinitionId: text("flow_definition_id"),
+  unitInstanceId: text("unit_instance_id").references(() => unitInstances.id),
+  actorId: text("actor_id").references(() => users.id),
+  isRead: boolean("is_read").notNull().default(false),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications);
+export const selectNotificationSchema = createSelectSchema(notifications);
+
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type SelectNotification = z.infer<typeof selectNotificationSchema>;

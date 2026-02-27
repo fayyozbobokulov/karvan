@@ -9,6 +9,7 @@ import {
   flowAuditLog,
   documents,
   users,
+  notifications,
   type FlowNode,
   type FlowContext,
 } from '@workflow/database';
@@ -372,8 +373,26 @@ export async function sendNotification(input: {
   flowInstanceId: string;
   channel: string[];
   message: string;
+  title?: string;
+  type?: string;
+  flowDefinitionId?: string;
 }) {
-  // For now, log notifications. In production, integrate with email/SMS/portal.
+  const database = getDb();
+
+  // Insert in-app notification record
+  if (input.recipientId) {
+    await database.insert(notifications).values({
+      recipientId: input.recipientId,
+      type: (input.type as any) || 'info',
+      title: input.title || 'Workflow Notification',
+      message: input.message,
+      flowInstanceId: input.flowInstanceId,
+      flowDefinitionId: input.flowDefinitionId || null,
+      unitInstanceId: input.unitInstanceId,
+    });
+  }
+
+  // Log for external channel integration (email/SMS)
   for (const ch of input.channel || ['portal']) {
     console.log(
       `[NOTIFICATION] Channel: ${ch} | To: ${input.recipientId} | Message: ${input.message}`,
@@ -397,6 +416,35 @@ export async function sendNotification(input: {
     actorId: null,
     action: 'NOTIFICATION_SENT',
     details: { channels: input.channel, recipientId: input.recipientId },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// createNotification — Insert a notification record (for use by any workflow step)
+// ---------------------------------------------------------------------------
+
+export async function createNotification(input: {
+  recipientId: string;
+  type: string;
+  title: string;
+  message: string;
+  flowInstanceId: string;
+  flowDefinitionId?: string;
+  unitInstanceId?: string;
+  actorId?: string;
+}) {
+  if (!input.recipientId) return;
+
+  const database = getDb();
+  await database.insert(notifications).values({
+    recipientId: input.recipientId,
+    type: input.type as any,
+    title: input.title,
+    message: input.message,
+    flowInstanceId: input.flowInstanceId,
+    flowDefinitionId: input.flowDefinitionId || null,
+    unitInstanceId: input.unitInstanceId || null,
+    actorId: input.actorId || null,
   });
 }
 

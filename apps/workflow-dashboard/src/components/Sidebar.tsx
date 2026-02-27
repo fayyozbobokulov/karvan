@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Box,
   CheckSquare,
@@ -10,6 +11,7 @@ import {
   Shield,
   Eye,
 } from "lucide-react";
+import { NotificationPanel } from "./NotificationPanel";
 
 export const USERS = [
   { id: "clerk-uuid", name: "John Smith (Clerk)", role: "clerk" },
@@ -22,12 +24,29 @@ export const USERS = [
   { id: "secretary-uuid", name: "Ms. Fisher (Secretary)", role: "secretary" },
 ];
 
+interface AppNotification {
+  id: string;
+  recipientId: string;
+  type: string;
+  title: string;
+  message: string;
+  flowInstanceId: string | null;
+  flowDefinitionId: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
 interface SidebarProps {
   currentView: string;
   setCurrentView: (v: string) => void;
   activeUserId: string;
   setActiveUserId: (id: string) => void;
   flowTaskCount?: number;
+  notifications: AppNotification[];
+  unreadNotificationCount: number;
+  onMarkNotificationRead: (id: string) => void;
+  onMarkAllNotificationsRead: () => void;
+  onViewFlowFromNotification: (flowInstanceId: string) => void;
 }
 
 export function Sidebar({
@@ -36,8 +55,14 @@ export function Sidebar({
   activeUserId,
   setActiveUserId,
   flowTaskCount = 0,
+  notifications,
+  unreadNotificationCount,
+  onMarkNotificationRead,
+  onMarkAllNotificationsRead,
+  onViewFlowFromNotification,
 }: SidebarProps) {
   const activeUser = USERS.find((u) => u.id === activeUserId);
+  const [notifPanelOpen, setNotifPanelOpen] = useState(false);
 
   return (
     <aside className="sidebar">
@@ -98,6 +123,19 @@ export function Sidebar({
           <Shield size={20} />
           <span>Audit Trail</span>
         </div>
+
+        <NotificationPanel
+          notifications={notifications}
+          unreadCount={unreadNotificationCount}
+          isOpen={notifPanelOpen}
+          onToggle={() => setNotifPanelOpen(!notifPanelOpen)}
+          onMarkAsRead={onMarkNotificationRead}
+          onMarkAllAsRead={onMarkAllNotificationsRead}
+          onViewFlow={(flowInstanceId) => {
+            setNotifPanelOpen(false);
+            onViewFlowFromNotification(flowInstanceId);
+          }}
+        />
 
         {/* Legacy section */}
         <div className="nav-section-label" style={{ marginTop: "0.5rem" }}>

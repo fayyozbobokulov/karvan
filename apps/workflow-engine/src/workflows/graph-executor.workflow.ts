@@ -181,6 +181,19 @@ export async function executeFlowGraph(input: FlowInput) {
           allowedActions: mergedConfig.allowedActions || [],
         });
 
+        // Notify the assignee about the new action
+        if (assigneeId) {
+          await act.createNotification({
+            recipientId: assigneeId,
+            type: 'task_assigned',
+            title: `Action Required: ${node.label}`,
+            message: `You have been assigned an action in flow "${input.flowDefinitionId}".`,
+            flowInstanceId,
+            flowDefinitionId: input.flowDefinitionId,
+            unitInstanceId,
+          });
+        }
+
         // Update flow status to waiting
         overallStatus = 'waiting';
 
@@ -215,6 +228,25 @@ export async function executeFlowGraph(input: FlowInput) {
           action: result.action,
           comment: result.comment,
         });
+
+        // Notify flow creator about the action result
+        const actionCreatorId = ctx.roleAssignments['initiator'] || '';
+        if (actionCreatorId && actionCreatorId !== assigneeId) {
+          const isRejection =
+            result.action === 'REJECT' || result.action === 'REQUEST_CHANGE';
+          await act.createNotification({
+            recipientId: actionCreatorId,
+            type: isRejection ? 'rejection' : 'action_completed',
+            title: isRejection
+              ? `${result.action === 'REJECT' ? 'Rejected' : 'Change Requested'}: ${node.label}`
+              : `Completed: ${node.label}`,
+            message: `${node.label} — ${result.action.toLowerCase()}${result.comment ? ': ' + result.comment : ''}.`,
+            flowInstanceId,
+            flowDefinitionId: input.flowDefinitionId,
+            unitInstanceId,
+            actorId: assigneeId,
+          });
+        }
         break;
       }
 
@@ -230,6 +262,19 @@ export async function executeFlowGraph(input: FlowInput) {
           flowInstanceId,
           instructions: node.label,
         });
+
+        // Notify the assignee about the new task
+        if (assigneeId) {
+          await act.createNotification({
+            recipientId: assigneeId,
+            type: 'task_assigned',
+            title: `Task Assigned: ${node.label}`,
+            message: `You have been assigned a task in flow "${input.flowDefinitionId}".`,
+            flowInstanceId,
+            flowDefinitionId: input.flowDefinitionId,
+            unitInstanceId,
+          });
+        }
 
         overallStatus = 'waiting';
 
@@ -426,6 +471,30 @@ export async function executeFlowGraph(input: FlowInput) {
       flowInstanceId,
       status: overallStatus as any,
     });
+
+    // Notify the flow creator about completion/failure
+    const creatorId = ctx.roleAssignments['initiator'] || '';
+    if (
+      creatorId &&
+      (overallStatus === 'completed' || overallStatus === 'failed')
+    ) {
+      await act
+        .createNotification({
+          recipientId: creatorId,
+          type:
+            overallStatus === 'completed' ? 'flow_completed' : 'flow_failed',
+          title:
+            overallStatus === 'completed'
+              ? `Flow Completed: ${input.flowDefinitionId}`
+              : `Flow Failed: ${input.flowDefinitionId}`,
+          message: `Your flow "${input.flowDefinitionId}" has ${overallStatus}.`,
+          flowInstanceId,
+          flowDefinitionId: input.flowDefinitionId,
+        })
+        .catch(() => {
+          /* best-effort */
+        });
+    }
   }
 
   return {
