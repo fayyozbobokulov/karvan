@@ -144,7 +144,7 @@ export async function recordAuditLog(input: {
   });
 }
 
-export async function sendNotification(input: {
+export async function sendLegacyNotification(input: {
   userId: string;
   message: string;
 }) {

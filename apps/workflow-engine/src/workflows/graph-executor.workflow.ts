@@ -202,8 +202,12 @@ export async function executeFlowGraph(input: FlowInput) {
             nodeId,
           });
         } else {
-          result = pendingDecisions.get(nodeId)!;
+          result = pendingDecisions.get(nodeId);
           pendingDecisions.delete(nodeId);
+        }
+
+        if (!result) {
+          result = { action: 'ERROR', comment: 'No decision data received' };
         }
 
         await act.completeActionUnit({
@@ -246,8 +250,12 @@ export async function executeFlowGraph(input: FlowInput) {
             nodeId,
           });
         } else {
-          result = pendingDecisions.get(nodeId)!;
+          result = pendingDecisions.get(nodeId);
           pendingDecisions.delete(nodeId);
+        }
+
+        if (!result) {
+          result = { action: 'ERROR', comment: 'No decision data received' };
         }
 
         await act.completeTaskUnit({

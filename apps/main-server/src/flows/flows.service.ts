@@ -340,17 +340,19 @@ export class FlowsService {
       throw new NotFoundException(`Flow instance not found: ${flowInstanceId}`);
     }
 
-    // Get all unit instances for this flow
+    // Get all unit instances for this flow (with assignee name)
     const units = await this.db
       .select({
         unitInstance: unitInstances,
         unitDefinition: unitDefinitions,
+        assignee: users,
       })
       .from(unitInstances)
       .innerJoin(
         unitDefinitions,
         eq(unitInstances.unitDefinitionId, unitDefinitions.id),
       )
+      .leftJoin(users, eq(unitInstances.assigneeId, users.id))
       .where(eq(unitInstances.flowInstanceId, flowInstanceId))
       .orderBy(unitInstances.createdAt);
 
@@ -367,6 +369,7 @@ export class FlowsService {
         unitType: u.unitDefinition.type,
         unitName: u.unitDefinition.name,
         assigneeId: u.unitInstance.assigneeId,
+        assigneeName: u.assignee?.name || null,
         output: u.unitInstance.output,
         startedAt: u.unitInstance.startedAt,
         completedAt: u.unitInstance.completedAt,

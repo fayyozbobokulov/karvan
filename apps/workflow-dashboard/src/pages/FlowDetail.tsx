@@ -24,6 +24,7 @@ interface FlowDetailData {
     unitType: string;
     unitName: string;
     assigneeId?: string;
+    assigneeName?: string;
     output?: any;
     startedAt?: string;
     completedAt?: string;
@@ -258,6 +259,15 @@ export function FlowDetail({
                       fontWeight: 600,
                     }}
                   >
+                    Assignee
+                  </th>
+                  <th
+                    style={{
+                      padding: "0.5rem",
+                      color: "var(--text-secondary)",
+                      fontWeight: 600,
+                    }}
+                  >
                     Status
                   </th>
                   <th
@@ -290,6 +300,23 @@ export function FlowDetail({
                       </td>
                       <td style={{ padding: "0.5rem", fontWeight: 500 }}>
                         {ui.unitName}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.5rem",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.35rem",
+                        }}
+                      >
+                        {ui.assigneeName ? (
+                          <>
+                            <User size={14} style={{ opacity: 0.5 }} />
+                            {ui.assigneeName}
+                          </>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
                       </td>
                       <td style={{ padding: "0.5rem" }}>
                         <span

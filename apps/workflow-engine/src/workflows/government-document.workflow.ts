@@ -25,7 +25,7 @@ const {
   registerDocument,
   distributeDocument,
   recordAuditLog,
-  sendNotification,
+  sendLegacyNotification,
   escalateTask,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '5 minutes',
@@ -72,7 +72,7 @@ export async function governmentDocumentWorkflow(input: {
   if (!validation.isValid) {
     await transition('rejected', 'validation_failed');
     await updateDocumentStatus({ documentId, status: 'rejected' });
-    await sendNotification({
+    await sendLegacyNotification({
       userId: authorId,
       message: `Document rejected: ${validation.errors.join(', ')}`,
     });
@@ -91,7 +91,7 @@ export async function governmentDocumentWorkflow(input: {
     assigneeRole: 'reviewer',
     actionType: 'review',
   });
-  await sendNotification({
+  await sendLegacyNotification({
     userId: reviewTask.assigneeId,
     message: `New document awaiting your review: ${documentId}`,
   });
@@ -108,7 +108,7 @@ export async function governmentDocumentWorkflow(input: {
 
   if (reviewTimedOut) {
     await escalateTask({ taskId: reviewTask.id, reason: 'timeout' });
-    await sendNotification({
+    await sendLegacyNotification({
       userId: authorId,
       message: 'Review escalated due to timeout',
     });
@@ -130,7 +130,7 @@ export async function governmentDocumentWorkflow(input: {
     await completeTask({ taskId: reviewTask.id, action: 'returned' });
     await transition('returned', 'changes_requested');
     await updateDocumentStatus({ documentId, status: 'returned' });
-    await sendNotification({
+    await sendLegacyNotification({
       userId: authorId,
       message: `Changes requested: ${rDecision?.comment}`,
     });
@@ -154,7 +154,7 @@ export async function governmentDocumentWorkflow(input: {
       assigneeRole: role,
       actionType: 'approve',
     });
-    await sendNotification({
+    await sendLegacyNotification({
       userId: approvalTask.assigneeId,
       message: `Document requires your approval`,
     });
@@ -229,7 +229,7 @@ export async function governmentDocumentWorkflow(input: {
 
   await transition('completed', 'workflow_complete');
   await updateDocumentStatus({ documentId, status: 'completed' });
-  await sendNotification({
+  await sendLegacyNotification({
     userId: authorId,
     message: `Document ${registry.registryNumber} is now official and distributed.`,
   });
