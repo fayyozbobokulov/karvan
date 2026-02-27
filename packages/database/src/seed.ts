@@ -169,6 +169,18 @@ async function seed() {
         creator: "procurement_officer",
       },
     },
+    {
+      id: "doc:vacation_plan",
+      type: "DOCUMENT",
+      name: "Vacation Plan",
+      description:
+        "Annual vacation planning document for collecting employee vacation schedules",
+      config: {
+        template: "vacation_plan",
+        fields: ["year", "planningPeriod", "notes"],
+        creator: "hr_officer",
+      },
+    },
 
     // ── ACTION units ───────────────────────────────────────────
     {
@@ -276,6 +288,14 @@ async function seed() {
       name: "Evaluate Procurement",
       description: "Evaluate procurement request and prepare order",
       config: { assignee: "procurement_officer", deadline: "96h" },
+    },
+    {
+      id: "task:submit_vacation_schedule",
+      type: "TASK",
+      name: "Submit Vacation Schedule",
+      description:
+        "Department head submits approximate vacation months for their employees",
+      config: { deadline: "168h" },
     },
 
     // ── CONDITION units ────────────────────────────────────────
@@ -913,6 +933,107 @@ async function seed() {
     },
   ];
 
+  // ── 5. Vacation Plan Flow ─────────────────────────────────
+  //
+  // HR creates a vacation planning task and sends it to all department heads.
+  // Each department head submits approximate vacation months for their employees.
+  // HR reviews the collected schedules and finalises the plan.
+  //
+  const vacationPlanGraph: FlowNode[] = [
+    {
+      id: "1",
+      unit: "doc:vacation_plan",
+      label: "HR: Create Vacation Plan",
+      next: ["2"],
+    },
+    {
+      id: "2",
+      unit: "parallel:multi_approval",
+      label: "Send to Department Heads",
+      next: ["3", "4", "5"],
+    },
+    {
+      id: "3",
+      unit: "task:submit_vacation_schedule",
+      label: "Dept Head 1: Submit Vacation Schedule",
+      config: { assignee: "dept_head_1", deadline: "168h" },
+      next: ["6"],
+    },
+    {
+      id: "4",
+      unit: "task:submit_vacation_schedule",
+      label: "Dept Head 2: Submit Vacation Schedule",
+      config: { assignee: "dept_head_2", deadline: "168h" },
+      next: ["6"],
+    },
+    {
+      id: "5",
+      unit: "task:submit_vacation_schedule",
+      label: "Dept Head 3: Submit Vacation Schedule",
+      config: { assignee: "dept_head_3", deadline: "168h" },
+      next: ["6"],
+    },
+    {
+      id: "6",
+      unit: "gate:wait_all",
+      label: "Wait for All Departments",
+      next: ["7"],
+    },
+    {
+      id: "7",
+      unit: "task:hr_process",
+      label: "HR: Review & Compile Schedules",
+      config: { assignee: "hr_officer", deadline: "72h" },
+      next: ["8"],
+    },
+    {
+      id: "8",
+      unit: "action:approve",
+      label: "Director Approves Vacation Plan",
+      config: { assignee: "director" },
+      next: ["9"],
+    },
+    {
+      id: "9",
+      unit: "cond:action_result",
+      label: "Director Decision?",
+      next: { APPROVE: ["10"], REJECT: ["R1"], REQUEST_CHANGE: ["RC1"] },
+    },
+    {
+      id: "10",
+      unit: "notify:flow_complete",
+      label: "Notify: Vacation Plan Approved",
+      config: { recipients: "hr_officer" },
+      next: ["11"],
+    },
+    {
+      id: "11",
+      unit: "auto:archive",
+      label: "Archive Vacation Plan",
+      next: [],
+    },
+    {
+      id: "R1",
+      unit: "notify:rejection",
+      label: "Notify: Plan Rejected",
+      config: {
+        recipients: "hr_officer",
+        message: "Vacation plan rejected by director",
+      },
+      next: [],
+      isTerminal: true,
+      isError: true,
+    },
+    {
+      id: "RC1",
+      unit: "notify:changes_requested",
+      label: "Notify: Changes Requested",
+      config: { recipients: "hr_officer" },
+      next: ["2"],
+      isLoop: true,
+    },
+  ];
+
   const flows: (typeof flowDefinitions.$inferInsert)[] = [
     {
       id: "business_trip",
@@ -980,6 +1101,24 @@ async function seed() {
         "accountant",
       ],
       graph: procurementGraph,
+      estimatedDuration: "7-14 days",
+    },
+    {
+      id: "vacation_plan",
+      name: "Vacation Plan",
+      description:
+        "Annual vacation planning: HR sends tasks to department heads to collect approximate vacation months for all employees",
+      icon: "🏖️",
+      color: "#06b6d4",
+      category: "hr",
+      roles: [
+        "hr_officer",
+        "dept_head_1",
+        "dept_head_2",
+        "dept_head_3",
+        "director",
+      ],
+      graph: vacationPlanGraph,
       estimatedDuration: "7-14 days",
     },
   ];
