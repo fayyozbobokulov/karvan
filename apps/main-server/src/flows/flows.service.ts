@@ -1,4 +1,10 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { eq, desc, and } from 'drizzle-orm';
 import {
   DRIZZLE,
@@ -18,6 +24,8 @@ import { TemporalService } from '../temporal/temporal.service';
 
 @Injectable()
 export class FlowsService {
+  private readonly logger = new Logger(FlowsService.name);
+
   constructor(
     @Inject(DRIZZLE) private readonly db: NodePgDatabase<typeof schema>,
     private readonly temporalService: TemporalService,
@@ -108,19 +116,34 @@ export class FlowsService {
       throw new NotFoundException(`Flow instance not found: ${flowInstanceId}`);
     }
 
+    // Validate flow is in a signalable state
+    const signalableStatuses = ['running', 'waiting'];
+    if (!signalableStatuses.includes(instance.status)) {
+      throw new ConflictException(
+        `Flow instance ${flowInstanceId} is in status "${instance.status}" and cannot accept signals`,
+      );
+    }
+
+    // Send signal to Temporal (point of no return)
     await this.temporalService.sendHumanDecisionSignal(
       instance.temporalWorkflowId,
       signal,
     );
 
-    // Record audit
-    await this.db.insert(flowAuditLog).values({
-      flowInstanceId,
-      actorId: signal.data?.actorId || null,
-      action: signal.action,
-      comment: signal.comment,
-      metadata: { nodeId: signal.nodeId, ...signal.data },
-    });
+    // Record audit (best-effort after successful signal)
+    try {
+      await this.db.insert(flowAuditLog).values({
+        flowInstanceId,
+        actorId: signal.data?.actorId || null,
+        action: signal.action,
+        comment: signal.comment,
+        metadata: { nodeId: signal.nodeId, ...signal.data },
+      });
+    } catch (auditError) {
+      this.logger.error(
+        `Audit log write failed after successful signal for flow ${flowInstanceId}: ${auditError}`,
+      );
+    }
 
     return { status: 'ok' };
   }

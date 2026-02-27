@@ -487,10 +487,25 @@ function isDownstream(
 }
 
 /**
- * Parse a timeout string like "72h", "168h", "24h" into milliseconds.
+ * Parse a timeout string like "72h", "168h", "30m" into milliseconds.
  */
-function parseTimeout(timeout: string): string {
-  // Temporal condition() accepts duration strings directly
-  // Return as-is since Temporal supports "72h", "48h", etc.
-  return timeout;
+function parseTimeout(timeout: string): number {
+  const match = timeout.match(/^(\d+)\s*(ms|s|m|h|d)$/);
+  if (!match) return 7 * 24 * 60 * 60 * 1000; // default 7 days
+
+  const value = parseInt(match[1], 10);
+  switch (match[2]) {
+    case 'ms':
+      return value;
+    case 's':
+      return value * 1000;
+    case 'm':
+      return value * 60 * 1000;
+    case 'h':
+      return value * 60 * 60 * 1000;
+    case 'd':
+      return value * 24 * 60 * 60 * 1000;
+    default:
+      return 7 * 24 * 60 * 60 * 1000;
+  }
 }

@@ -233,21 +233,41 @@ function App() {
     nodeId: string,
     action: string,
     comment?: string,
-  ) => {
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
-      await fetch(`${FLOW_API_BASE}/flows/${flowInstanceId}/signal`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nodeId,
-          action,
-          comment,
-          data: { actorId: activeUserId },
-        }),
-      });
+      const res = await fetch(
+        `${FLOW_API_BASE}/flows/${flowInstanceId}/signal`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nodeId,
+            action,
+            comment,
+            data: { actorId: activeUserId },
+          }),
+        },
+      );
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        return {
+          success: false,
+          error: errorData.message || `Server error (${res.status})`,
+        };
+      }
+
+      // Optimistically remove the task so the card disappears immediately
+      setFlowTasks((prev) =>
+        prev.filter(
+          (t) => !(t.flowInstanceId === flowInstanceId && t.nodeId === nodeId),
+        ),
+      );
       fetchFlowData();
+      return { success: true };
     } catch (error) {
       console.error("Error sending signal:", error);
+      return { success: false, error: "Network error. Please try again." };
     }
   };
 

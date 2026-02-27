@@ -1,5 +1,10 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Client, Connection } from '@temporalio/client';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  BadRequestException,
+} from '@nestjs/common';
+import { Client, Connection, WorkflowNotFoundError } from '@temporalio/client';
 import {
   TASK_QUEUES,
   WORKFLOW_TYPES,
@@ -115,15 +120,31 @@ export class TemporalService implements OnModuleInit {
       data?: Record<string, any>;
     },
   ): Promise<void> {
-    const handle = this.client.workflow.getHandle(temporalWorkflowId);
-    await handle.signal('humanDecision', signal);
-    this.logger.log(
-      `Sent humanDecision signal to ${temporalWorkflowId}: node=${signal.nodeId}, action=${signal.action}`,
-    );
+    try {
+      const handle = this.client.workflow.getHandle(temporalWorkflowId);
+      await handle.signal('humanDecision', signal);
+      this.logger.log(
+        `Sent humanDecision signal to ${temporalWorkflowId}: node=${signal.nodeId}, action=${signal.action}`,
+      );
+    } catch (error) {
+      if (error instanceof WorkflowNotFoundError) {
+        throw new BadRequestException(
+          `Workflow ${temporalWorkflowId} is already completed or terminated`,
+        );
+      }
+      throw error;
+    }
   }
 
   async queryFlowStatus(temporalWorkflowId: string): Promise<any> {
-    const handle = this.client.workflow.getHandle(temporalWorkflowId);
-    return await handle.query('getFlowStatus');
+    try {
+      const handle = this.client.workflow.getHandle(temporalWorkflowId);
+      return await handle.query('getFlowStatus');
+    } catch (error) {
+      if (error instanceof WorkflowNotFoundError) {
+        return null;
+      }
+      throw error;
+    }
   }
 }
