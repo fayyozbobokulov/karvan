@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import "./App.css";
 
 // Components
 import { Sidebar, USERS } from "./components/Sidebar";
+import { NotificationToastContainer } from "./components/NotificationToast";
 
 // Legacy pages
 import { MyTasks } from "./pages/MyTasks";
@@ -110,10 +111,6 @@ function App() {
   const [flowDefinitions, setFlowDefinitions] = useState<FlowDefinition[]>([]);
   const [flowInstances, setFlowInstances] = useState<FlowInstance[]>([]);
   const [flowTasks, setFlowTasks] = useState<FlowTask[]>([]);
-  const [appNotifications, setAppNotifications] = useState<AppNotification[]>(
-    [],
-  );
-  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [selectedFlowDef, setSelectedFlowDef] = useState<FlowDefinition | null>(
     null,
   );
@@ -121,6 +118,13 @@ function App() {
     string | null
   >(null);
   const [instanceStatusFilter, setInstanceStatusFilter] = useState("");
+
+  // Toast notification state
+  const [activeToasts, setActiveToasts] = useState<
+    { id: string; title: string; message: string }[]
+  >([]);
+  const seenNotificationIds = useRef<Set<string>>(new Set());
+  const initialLoadDone = useRef(false);
 
   // App state
   const [currentView, setCurrentView] = useState<ViewType>("flow-catalog");
@@ -146,28 +150,55 @@ function App() {
 
   // ── Flow engine data fetching ───────────────────────────────────────
 
+  const dismissToast = useCallback((id: string) => {
+    setActiveToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
   const fetchFlowData = async () => {
     try {
-      const [defsRes, instancesRes, tasksRes, notifsRes, unreadRes] =
-        await Promise.all([
-          fetch(`${FLOW_API_BASE}/flow-definitions`),
-          fetch(`${FLOW_API_BASE}/flow-instances`),
-          fetch(`${FLOW_API_BASE}/my-tasks?userId=${activeUserId}`),
-          fetch(
-            `${FLOW_API_BASE}/notifications?userId=${activeUserId}&limit=50`,
-          ),
-          fetch(
-            `${FLOW_API_BASE}/notifications/unread-count?userId=${activeUserId}`,
-          ),
-        ]);
+      const [defsRes, instancesRes, tasksRes, notifsRes] = await Promise.all([
+        fetch(`${FLOW_API_BASE}/flow-definitions`),
+        fetch(`${FLOW_API_BASE}/flow-instances`),
+        fetch(`${FLOW_API_BASE}/my-tasks?userId=${activeUserId}`),
+        fetch(`${FLOW_API_BASE}/notifications?userId=${activeUserId}&limit=20`),
+      ]);
 
       if (defsRes.ok) setFlowDefinitions(await defsRes.json());
       if (instancesRes.ok) setFlowInstances(await instancesRes.json());
       if (tasksRes.ok) setFlowTasks(await tasksRes.json());
-      if (notifsRes.ok) setAppNotifications(await notifsRes.json());
-      if (unreadRes.ok) {
-        const data = await unreadRes.json();
-        setUnreadNotificationCount(data.count);
+
+      if (notifsRes.ok) {
+        const notifications: AppNotification[] = await notifsRes.json();
+
+        // On first load, seed the seen set so we don't toast old notifications
+        if (!initialLoadDone.current) {
+          notifications.forEach((n) => seenNotificationIds.current.add(n.id));
+          initialLoadDone.current = true;
+        } else {
+          // Show toasts only for new, unread notifications
+          const newOnes = notifications.filter(
+            (n) => !n.isRead && !seenNotificationIds.current.has(n.id),
+          );
+          newOnes.forEach((n) => seenNotificationIds.current.add(n.id));
+
+          if (newOnes.length > 0) {
+            setActiveToasts((prev) => [
+              ...prev,
+              ...newOnes.map((n) => ({
+                id: n.id,
+                title: n.title,
+                message: n.message,
+              })),
+            ]);
+
+            // Auto-mark as read in background
+            newOnes.forEach((n) => {
+              fetch(`${FLOW_API_BASE}/notifications/${n.id}/read`, {
+                method: "PATCH",
+              }).catch(() => {});
+            });
+          }
+        }
       }
     } catch (error) {
       console.error("Error fetching flow data:", error);
@@ -177,10 +208,15 @@ function App() {
   };
 
   useEffect(() => {
+    // Reset toast tracking when switching users
+    seenNotificationIds.current.clear();
+    initialLoadDone.current = false;
+    setActiveToasts([]);
+
     fetchFlowData();
     const interval = setInterval(() => {
       fetchFlowData();
-    }, 10000);
+    }, 5000);
     return () => clearInterval(interval);
   }, [activeUserId]);
 
@@ -304,40 +340,6 @@ function App() {
     setCurrentView("flow-detail");
   };
 
-  // ── Notification handlers ─────────────────────────────────────────────
-
-  const handleMarkNotificationRead = async (notificationId: string) => {
-    try {
-      await fetch(`${FLOW_API_BASE}/notifications/${notificationId}/read`, {
-        method: "PATCH",
-      });
-      setAppNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n)),
-      );
-      setUnreadNotificationCount((prev) => Math.max(0, prev - 1));
-    } catch (error) {
-      console.error("Error marking notification as read:", error);
-    }
-  };
-
-  const handleMarkAllNotificationsRead = async () => {
-    try {
-      await fetch(
-        `${FLOW_API_BASE}/notifications/read-all?userId=${activeUserId}`,
-        { method: "PATCH" },
-      );
-      setAppNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      setUnreadNotificationCount(0);
-    } catch (error) {
-      console.error("Error marking all as read:", error);
-    }
-  };
-
-  const handleViewFlowFromNotification = (flowInstanceId: string) => {
-    setSelectedFlowInstanceId(flowInstanceId);
-    setCurrentView("flow-detail");
-  };
-
   // ── Render ──────────────────────────────────────────────────────────
 
   if (loading) {
@@ -353,6 +355,11 @@ function App() {
 
   return (
     <div className="app-layout">
+      <NotificationToastContainer
+        toasts={activeToasts}
+        onDismiss={dismissToast}
+      />
+
       <Sidebar
         currentView={currentView}
         setCurrentView={(v) => {
@@ -363,11 +370,6 @@ function App() {
         activeUserId={activeUserId}
         setActiveUserId={setActiveUserId}
         flowTaskCount={flowTasks.length}
-        notifications={appNotifications}
-        unreadNotificationCount={unreadNotificationCount}
-        onMarkNotificationRead={handleMarkNotificationRead}
-        onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
-        onViewFlowFromNotification={handleViewFlowFromNotification}
       />
 
       <main className="main-content">
