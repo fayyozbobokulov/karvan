@@ -42,7 +42,7 @@ interface FlowDefinition {
   color?: string;
   category?: string;
   roles: string[];
-  graph: any[];
+  graph: Record<string, unknown>[];
   estimatedDuration?: string;
 }
 
@@ -66,12 +66,12 @@ interface FlowTask {
   status: string;
   unitType: string;
   unitName: string;
-  unitConfig: Record<string, any>;
+  unitConfig: Record<string, unknown>;
   flowInstanceId: string;
   flowName: string;
   flowDefinitionId: string;
   assigneeId: string;
-  input: Record<string, any>;
+  input: Record<string, unknown>;
   createdAt: string;
 }
 
@@ -272,7 +272,7 @@ function App() {
   const handleLaunchFlow = async (data: {
     flowDefinitionId: string;
     roleAssignments: Record<string, string>;
-    variables: Record<string, any>;
+    variables: Record<string, unknown>;
     startedBy: string;
   }) => {
     try {
@@ -321,13 +321,15 @@ function App() {
         };
       }
 
-      // Optimistically remove the task so the card disappears immediately
+      // Optimistically remove only the completed task
       setFlowTasks((prev) =>
         prev.filter(
           (t) => !(t.flowInstanceId === flowInstanceId && t.nodeId === nodeId),
         ),
       );
-      fetchFlowData();
+      // Delay re-fetch so the workflow has time to process the signal
+      // before we query. The 5s poll will also catch it.
+      setTimeout(() => fetchFlowData(), 2000);
       return { success: true };
     } catch (error) {
       console.error("Error sending signal:", error);
