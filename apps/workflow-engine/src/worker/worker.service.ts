@@ -1,7 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { NativeConnection, Worker } from '@temporalio/worker';
 import { TASK_QUEUES } from '@workflow/database';
-import * as activities from '../activities';
+import * as docActivities from '../activities/document.activities';
+import * as govActivities from '../activities/government.activities';
+import * as unitActivities from '../activities/unit.activities';
 
 @Injectable()
 export class WorkerService implements OnModuleInit {
@@ -18,7 +20,7 @@ export class WorkerService implements OnModuleInit {
       namespace: 'default',
       taskQueue: TASK_QUEUES.DOCUMENT_PROCESSING,
       workflowsPath: require.resolve('../workflows'),
-      activities,
+      activities: { ...docActivities, ...govActivities },
     });
 
     this.logger.log(
@@ -33,7 +35,7 @@ export class WorkerService implements OnModuleInit {
       namespace: 'default',
       taskQueue: TASK_QUEUES.FLOW_EXECUTION,
       workflowsPath: require.resolve('../workflows'),
-      activities,
+      activities: { ...unitActivities, ...govActivities },
     });
 
     this.logger.log(

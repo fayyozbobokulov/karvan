@@ -150,10 +150,8 @@ function App() {
 
   useEffect(() => {
     fetchFlowData();
-    fetchLegacyData();
     const interval = setInterval(() => {
       fetchFlowData();
-      fetchLegacyData();
     }, 10000);
     return () => clearInterval(interval);
   }, [activeUserId]);

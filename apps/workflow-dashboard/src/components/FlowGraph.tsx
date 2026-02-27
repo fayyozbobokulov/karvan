@@ -48,8 +48,13 @@ function layoutNodes(graph: FlowNode[]): Map<string, { x: number; y: number }> {
   const visited = new Set<string>();
   const columns = new Map<string, number>();
 
-  // Calculate column (depth) for each node using BFS
-  function assignColumn(nodeId: string, col: number) {
+  // Calculate column (depth) for each node, tracking ancestors to detect cycles
+  function assignColumn(
+    nodeId: string,
+    col: number,
+    ancestors: Set<string> = new Set(),
+  ) {
+    if (ancestors.has(nodeId)) return; // cycle detected — stop
     const existingCol = columns.get(nodeId);
     if (existingCol !== undefined && existingCol >= col) return;
     columns.set(nodeId, col);
@@ -61,8 +66,10 @@ function layoutNodes(graph: FlowNode[]): Map<string, { x: number; y: number }> {
       ? node.next
       : Object.values(node.next).flat();
 
+    const nextAncestors = new Set(ancestors);
+    nextAncestors.add(nodeId);
     for (const nextId of nextIds) {
-      assignColumn(nextId, col + 1);
+      assignColumn(nextId, col + 1, nextAncestors);
     }
   }
 

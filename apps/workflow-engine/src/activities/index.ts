@@ -1,9 +1,3 @@
-import * as docActivities from './document.activities';
-import * as govActivities from './government.activities';
-import * as unitActivities from './unit.activities';
-
-export const activities = {
-  ...docActivities,
-  ...govActivities,
-  ...unitActivities,
-};
+export * as docActivities from './document.activities';
+export * as govActivities from './government.activities';
+export * as unitActivities from './unit.activities';
