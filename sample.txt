@@ -1,0 +1,147 @@
+In startFlow, if the Temporal workflow start fails (step 3) after the DB insert  
+  succeeded (step 2), you'd have an orphaned flow instance in the DB. This is a
+  case where compensating logic would help. But that's a separate improvement.     
+                                                                                   
+  Summary                                                                          
+                                                                                   
+  For the signal flow, what you have now is the correct pattern for mixed DB +
+  external service operations:
+  - Validate everything you can upfront (returns 409 if flow is already
+  failed/completed)
+  - Do the irreversible thing (Temporal signal)
+  - Best-effort bookkeeping (audit log, with warning on failure)
+  - UI protection (loading state, double-click prevention, optimistic removal)
+
+  A SQL transaction only helps when you have multiple DB writes that must all
+  succeed or all fail together. It can't extend to external services like Temporal.
+
+✻ Cooked for 36s
+
+❯ How do we can achieve similar pattern? How do we can make it retry from the      
+  failed step when triggered                                                      
+                                                                                   
+⏺ Great question. You're asking about the Saga pattern — and the good news is,     
+  you're already using the best tool for it: Temporal itself.
+                                                                                   
+  The Problem               
+                                                                                   
+  API Request                                                                      
+    ├─ Step 1: Validate (DB read)                                                  
+    ├─ Step 2: Signal Temporal         ← what if this fails?                       
+    └─ Step 3: Write audit log         ← what if this fails?                       
+                                         
+  If Step 2 fails → nothing to undo, just return error ✓
+  If Step 3 fails → signal sent but no audit record ✗
+
+  Pattern 1: Outbox Pattern (DB-first, process later)
+
+  Instead of calling Temporal directly from the API, write the intent to the
+  database first, then process it asynchronously.
+
+  API Request (single DB transaction)
+    ├─ Validate flow status
+    ├─ INSERT into signal_outbox (pending)
+    ├─ INSERT into flow_audit_log
+    └─ COMMIT  ← all or nothing
+
+  Background Worker (polls outbox)
+    ├─ Read pending signals
+    ├─ Send to Temporal
+    ├─ UPDATE signal_outbox SET status = 'sent'
+    └─ On failure → retry next poll
+
+  This guarantees the audit log and signal intent are always consistent. But it
+  adds latency and complexity.
+
+  Pattern 2: Use Temporal as the Transaction Coordinator
+
+  This is the most natural approach since you already have Temporal. Instead of the
+   API doing multiple things, make Temporal orchestrate everything as activities
+  that auto-retry:
+
+  // Instead of API doing: validate → signal → audit
+  // Make a Temporal workflow do it:
+
+  // signal-processor.workflow.ts
+  export async function processSignalWorkflow(input: {
+    flowInstanceId: string;
+    nodeId: string;
+    action: string;
+    comment?: string;
+    actorId?: string;
+  }) {
+    // Step 1: Validate (activity - retries automatically)
+    await act.validateFlowForSignal({ flowInstanceId: input.flowInstanceId });
+
+    // Step 2: Record audit (activity - retries automatically)
+    await act.recordSignalAudit({
+      flowInstanceId: input.flowInstanceId,
+      nodeId: input.nodeId,
+      action: input.action,
+      actorId: input.actorId,
+    });
+
+    // Step 3: Send the human decision signal to the flow workflow
+    // (This is a child workflow signal, handled by Temporal internally)
+    await act.deliverHumanDecision({
+      flowInstanceId: input.flowInstanceId,
+      nodeId: input.nodeId,
+      action: input.action,
+      comment: input.comment,
+    });
+  }
+
+  Each step is an activity. If any step fails:
+  - Temporal remembers which steps completed
+  - On retry, it skips completed steps (replay)
+  - It only retries the failed step
+
+  This is exactly what you asked for: "retry from the failed step when triggered".
+
+  Pattern 3: What your workflow already does
+
+  Look at your graph-executor.workflow.ts — it already IS this pattern:
+
+  executeNode("1")                          ← Temporal tracks progress
+    ├─ act.loadUnitDefinition()             ← activity, auto-retries 3x
+    ├─ act.createUnitInstance()             ← activity, auto-retries 3x
+    ├─ act.activateActionUnit()             ← activity, auto-retries 3x
+    ├─ condition(() => signal received)     ← durable timer, survives crashes
+    ├─ act.completeActionUnit()             ← activity, auto-retries 3x
+    ├─ act.recordAuditEntry()              ← activity, auto-retries 3x
+    └─ executeNode("next")                  ← continues...
+
+  If completeActionUnit fails on attempt 1, Temporal retries it. If the worker
+  crashes mid-execution, Temporal replays the history and picks up from the exact
+  activity that failed. This is already your transactional retry-from-failure
+  pattern.
+
+  Visual comparison
+
+                       Plain API              Temporal Workflow
+                       ─────────              ─────────────────
+  Atomicity            ✗ No                   ✓ All-or-nothing per workflow
+  Retry on failure     ✗ Manual               ✓ Automatic per activity
+  Resume after crash   ✗ Lost                 ✓ Replays from history
+  Compensation         ✗ Must code            ✓ Built-in (saga pattern)
+  Visibility           ✗ Logs only            ✓ Temporal UI shows each step
+
+  What this means for your signal flow
+
+  The signal flow is actually fine as-is because the real work (completing the
+  action unit, updating statuses, recording audit) happens inside the Temporal
+  workflow as activities with automatic retries. The API just delivers the signal —
+   it's a lightweight "trigger" that tells the durable workflow to continue.
+
+  API (lightweight trigger)          Temporal Workflow (durable execution)
+  ─────────────────────────          ──────────────────────────────────────
+  validate → signal ──────────────►  receives signal
+                                     ├─ completeActionUnit()   ← retries 3x
+                                     ├─ recordAuditEntry()     ← retries 3x
+                                     ├─ resolve next nodes     ← retries 3x
+                                     └─ executeNode(next)      ← continues
+
+  The Temporal workflow is already your "transaction with retry from failed step".
+  The API audit log we added is just a convenience for querying — the real source
+  of truth is Temporal's event history + the activities that write to your DB from
+  within the workflow.
