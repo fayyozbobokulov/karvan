@@ -11,6 +11,9 @@ import {
   users,
 } from '@workflow/database';
 
+type TaskAction = 'review' | 'approve' | 'sign' | 'acknowledge';
+type DocumentStatus = typeof documents.$inferInsert.status;
+
 let db: ReturnType<typeof drizzle> | null = null;
 
 function getDb() {
@@ -60,7 +63,7 @@ export async function createTask(input: {
     documentId: input.documentId,
     assigneeId: assignee.id,
     type: input.actionType, // For backwards compatibility
-    actionType: input.actionType as any,
+    actionType: input.actionType as TaskAction,
     status: 'pending',
   });
 
@@ -71,13 +74,16 @@ export async function completeTask(input: { taskId: string; action: string }) {
   const database = getDb();
   await database
     .update(tasks)
-    .set({ status: input.action as any, completedAt: new Date() })
+    .set({
+      status: input.action as typeof tasks.$inferInsert.status,
+      completedAt: new Date(),
+    })
     .where(eq(tasks.id, input.taskId));
 }
 
 export async function updateDocumentStatus(input: {
   documentId: string;
-  status: any;
+  status: NonNullable<DocumentStatus>;
 }) {
   const database = getDb();
   await database
@@ -144,13 +150,19 @@ export async function recordAuditLog(input: {
   });
 }
 
+// Temporal activities must be async even without await
+// eslint-disable-next-line @typescript-eslint/require-await
 export async function sendLegacyNotification(input: {
   userId: string;
   message: string;
-}) {
+}): Promise<void> {
   console.log(`[NOTIFICATION] To: ${input.userId} — ${input.message}`);
 }
 
-export async function escalateTask(input: { taskId: string; reason: string }) {
+// eslint-disable-next-line @typescript-eslint/require-await
+export async function escalateTask(input: {
+  taskId: string;
+  reason: string;
+}): Promise<void> {
   console.log(`[ESCALATION] Task ${input.taskId} escalated: ${input.reason}`);
 }

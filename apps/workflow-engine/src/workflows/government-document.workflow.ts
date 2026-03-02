@@ -40,7 +40,7 @@ interface WorkflowStatus {
 
 export async function governmentDocumentWorkflow(input: {
   documentId: string;
-  blueprint: any;
+  blueprint: Record<string, unknown>;
   authorId: string;
 }) {
   const { documentId, authorId } = input;
@@ -114,7 +114,10 @@ export async function governmentDocumentWorkflow(input: {
     });
   }
 
-  const rDecision = reviewDecision as any;
+  const rDecision = reviewDecision as {
+    action: string;
+    comment?: string;
+  } | null;
   if (rDecision?.action === 'reject') {
     await completeTask({ taskId: reviewTask.id, action: 'rejected' });
     await transition('rejected', 'reviewer_rejected');
@@ -173,7 +176,10 @@ export async function governmentDocumentWorkflow(input: {
       await escalateTask({ taskId: approvalTask.id, reason: 'timeout' });
     }
 
-    const aDecision = approvalDecision as any;
+    const aDecision = approvalDecision as {
+      action: string;
+      comment?: string;
+    } | null;
     if (aDecision?.action === 'reject') {
       await completeTask({ taskId: approvalTask.id, action: 'rejected' });
       await transition('rejected', `${role}_rejected`);
@@ -205,7 +211,7 @@ export async function governmentDocumentWorkflow(input: {
 
   await condition(() => signDecision !== null, '120h');
 
-  const sDecision = signDecision as any;
+  const sDecision = signDecision as { action: string } | null;
   if (sDecision?.action === 'reject') {
     await completeTask({ taskId: signTask.id, action: 'rejected' });
     await transition('rejected', 'signatory_rejected');

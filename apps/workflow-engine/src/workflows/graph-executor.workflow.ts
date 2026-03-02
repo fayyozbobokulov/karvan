@@ -12,7 +12,7 @@ interface FlowNode {
   id: string;
   unit: string;
   label: string;
-  config?: Record<string, any>;
+  config?: Record<string, unknown>;
   next: string[] | Record<string, string[]>;
   isTerminal?: boolean;
   isError?: boolean;
@@ -21,11 +21,18 @@ interface FlowNode {
 
 interface FlowContext {
   roleAssignments: Record<string, string>;
-  variables: Record<string, any>;
+  variables: Record<string, unknown>;
   completedNodes: string[];
-  nodeOutputs: Record<string, any>;
+  nodeOutputs: Record<string, unknown>;
   activeNodes: string[];
 }
+
+type FlowInstanceStatus =
+  | 'running'
+  | 'waiting'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 interface FlowInput {
   flowInstanceId: string;
@@ -52,7 +59,8 @@ interface HumanDecision {
   nodeId: string;
   action: string;
   comment?: string;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 // ── Signals ──────────────────────────────────────────────────────────────────
@@ -89,7 +97,7 @@ export async function executeFlowGraph(input: FlowInput) {
   };
 
   const history: FlowStatus['history'] = [];
-  let overallStatus = 'running';
+  let overallStatus: FlowInstanceStatus = 'running';
 
   // Lookup helper
   const getNode = (id: string): FlowNode | undefined =>
@@ -124,8 +132,8 @@ export async function executeFlowGraph(input: FlowInput) {
     const unitDef = await act.loadUnitDefinition({ unitId: node.unit });
 
     // Merge configs: unit default config + node-level overrides
-    const mergedConfig = {
-      ...((unitDef.config as Record<string, any>) || {}),
+    const mergedConfig: Record<string, unknown> = {
+      ...((unitDef.config as Record<string, unknown>) || {}),
       ...(node.config || {}),
     };
 
@@ -152,7 +160,7 @@ export async function executeFlowGraph(input: FlowInput) {
       timestamp: new Date().toISOString(),
     });
 
-    let result: any;
+    let result: Record<string, unknown> | undefined;
 
     // ── TYPE-SPECIFIC EXECUTION ──────────────────────────────────────────
 
@@ -169,7 +177,10 @@ export async function executeFlowGraph(input: FlowInput) {
 
       case 'ACTION': {
         // Determine assignee from config + role assignments
-        const assigneeRole = mergedConfig.assignee;
+        const assigneeRole =
+          typeof mergedConfig.assignee === 'string'
+            ? mergedConfig.assignee
+            : '';
         const assigneeId = assigneeRole
           ? ctx.roleAssignments[assigneeRole] || ''
           : '';
@@ -178,7 +189,9 @@ export async function executeFlowGraph(input: FlowInput) {
           unitInstanceId,
           assigneeId,
           flowInstanceId,
-          allowedActions: mergedConfig.allowedActions || [],
+          allowedActions: Array.isArray(mergedConfig.allowedActions)
+            ? (mergedConfig.allowedActions as string[])
+            : [],
         });
 
         // Notify the assignee about the new action
@@ -198,7 +211,11 @@ export async function executeFlowGraph(input: FlowInput) {
         overallStatus = 'waiting';
 
         // PAUSE — wait for human signal
-        const timeoutMs = parseTimeout(mergedConfig.timeout || '168h');
+        const timeoutMs = parseTimeout(
+          typeof mergedConfig.timeout === 'string'
+            ? mergedConfig.timeout
+            : '168h',
+        );
 
         const signalReceived = await condition(
           () => pendingDecisions.has(nodeId),
@@ -223,24 +240,29 @@ export async function executeFlowGraph(input: FlowInput) {
           result = { action: 'ERROR', comment: 'No decision data received' };
         }
 
+        const actionAction =
+          typeof result?.action === 'string' ? result.action : 'ERROR';
+        const actionComment =
+          typeof result?.comment === 'string' ? result.comment : undefined;
+
         await act.completeActionUnit({
           unitInstanceId,
-          action: result.action,
-          comment: result.comment,
+          action: actionAction,
+          comment: actionComment,
         });
 
         // Notify flow creator about the action result
         const actionCreatorId = ctx.roleAssignments['initiator'] || '';
         if (actionCreatorId && actionCreatorId !== assigneeId) {
           const isRejection =
-            result.action === 'REJECT' || result.action === 'REQUEST_CHANGE';
+            actionAction === 'REJECT' || actionAction === 'REQUEST_CHANGE';
           await act.createNotification({
             recipientId: actionCreatorId,
             type: isRejection ? 'rejection' : 'action_completed',
             title: isRejection
-              ? `${result.action === 'REJECT' ? 'Rejected' : 'Change Requested'}: ${node.label}`
+              ? `${actionAction === 'REJECT' ? 'Rejected' : 'Change Requested'}: ${node.label}`
               : `Completed: ${node.label}`,
-            message: `${node.label} — ${result.action.toLowerCase()}${result.comment ? ': ' + result.comment : ''}.`,
+            message: `${node.label} — ${actionAction.toLowerCase()}${actionComment ? ': ' + actionComment : ''}.`,
             flowInstanceId,
             flowDefinitionId: input.flowDefinitionId,
             unitInstanceId,
@@ -251,22 +273,25 @@ export async function executeFlowGraph(input: FlowInput) {
       }
 
       case 'TASK': {
-        const assigneeRole = mergedConfig.assignee;
-        const assigneeId = assigneeRole
-          ? ctx.roleAssignments[assigneeRole] || ''
+        const taskAssigneeRole =
+          typeof mergedConfig.assignee === 'string'
+            ? mergedConfig.assignee
+            : '';
+        const taskAssigneeId = taskAssigneeRole
+          ? ctx.roleAssignments[taskAssigneeRole] || ''
           : '';
 
         await act.activateTaskUnit({
           unitInstanceId,
-          assigneeId,
+          assigneeId: taskAssigneeId,
           flowInstanceId,
           instructions: node.label,
         });
 
         // Notify the assignee about the new task
-        if (assigneeId) {
+        if (taskAssigneeId) {
           await act.createNotification({
-            recipientId: assigneeId,
+            recipientId: taskAssigneeId,
             type: 'task_assigned',
             title: `Task Assigned: ${node.label}`,
             message: `You have been assigned a task in flow "${input.flowDefinitionId}".`,
@@ -278,7 +303,11 @@ export async function executeFlowGraph(input: FlowInput) {
 
         overallStatus = 'waiting';
 
-        const timeoutMs = parseTimeout(mergedConfig.deadline || '72h');
+        const timeoutMs = parseTimeout(
+          typeof mergedConfig.deadline === 'string'
+            ? mergedConfig.deadline
+            : '72h',
+        );
 
         const signalReceived = await condition(
           () => pendingDecisions.has(nodeId),
@@ -305,7 +334,7 @@ export async function executeFlowGraph(input: FlowInput) {
 
         await act.completeTaskUnit({
           unitInstanceId,
-          result: result,
+          result: result || {},
         });
         break;
       }
@@ -314,7 +343,10 @@ export async function executeFlowGraph(input: FlowInput) {
         result = await act.evaluateCondition({
           unitInstanceId,
           flowInstanceId,
-          expression: (mergedConfig.expression as string) || '',
+          expression:
+            typeof mergedConfig.expression === 'string'
+              ? mergedConfig.expression
+              : '',
           context: ctx,
         });
         // result = { branch: "true" } or { branch: "SIGN" } etc.
@@ -322,18 +354,27 @@ export async function executeFlowGraph(input: FlowInput) {
       }
 
       case 'NOTIFICATION': {
-        const recipientRole = mergedConfig.recipients;
+        const recipientRole =
+          typeof mergedConfig.recipients === 'string'
+            ? mergedConfig.recipients
+            : '';
         const recipientId = recipientRole
           ? ctx.roleAssignments[recipientRole] || ''
           : '';
 
-        result = await act.sendNotification({
+        await act.sendNotification({
           unitInstanceId,
           recipientId,
           flowInstanceId,
-          channel: mergedConfig.channel || ['portal'],
-          message: mergedConfig.message || node.label,
+          channel: Array.isArray(mergedConfig.channel)
+            ? (mergedConfig.channel as string[])
+            : ['portal'],
+          message:
+            typeof mergedConfig.message === 'string'
+              ? mergedConfig.message
+              : node.label,
         });
+        result = { status: 'notified' };
         break;
       }
 
@@ -341,7 +382,10 @@ export async function executeFlowGraph(input: FlowInput) {
         result = await act.executeAutomation({
           unitInstanceId,
           flowInstanceId,
-          handler: mergedConfig.handler as string,
+          handler:
+            typeof mergedConfig.handler === 'string'
+              ? mergedConfig.handler
+              : '',
           config: mergedConfig,
           context: ctx,
         });
@@ -387,11 +431,16 @@ export async function executeFlowGraph(input: FlowInput) {
       timestamp: new Date().toISOString(),
     });
 
+    const resultAction =
+      typeof result?.action === 'string' ? result.action : undefined;
+    const resultBranch =
+      typeof result?.branch === 'string' ? result.branch : undefined;
+
     await act.recordAuditEntry({
       flowInstanceId,
       unitInstanceId,
       actorId: null,
-      action: result?.action || 'COMPLETE',
+      action: resultAction || 'COMPLETE',
       details: result,
     });
 
@@ -403,11 +452,8 @@ export async function executeFlowGraph(input: FlowInput) {
       nextNodeIds = node.next;
     } else if (typeof node.next === 'object' && node.next !== null) {
       // Branch resolution — match by branch key or action
-      const branchKey = result?.branch || result?.action || 'default';
-      nextNodeIds =
-        (node.next as Record<string, string[]>)[branchKey] ||
-        (node.next as Record<string, string[]>)['default'] ||
-        [];
+      const branchKey = resultBranch || resultAction || 'default';
+      nextNodeIds = node.next[branchKey] || node.next['default'] || [];
     }
 
     if (nextNodeIds.length === 0) {
@@ -469,7 +515,7 @@ export async function executeFlowGraph(input: FlowInput) {
   } finally {
     await act.updateFlowInstance({
       flowInstanceId,
-      status: overallStatus as any,
+      status: overallStatus,
     });
 
     // Notify the flow creator about completion/failure

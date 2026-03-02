@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import {
@@ -8,11 +8,11 @@ import {
   flowInstances,
   flowAuditLog,
   documents,
-  users,
   notifications,
-  type FlowNode,
   type FlowContext,
 } from '@workflow/database';
+
+type NotificationType = typeof notifications.$inferInsert.type;
 
 // ---------------------------------------------------------------------------
 // Singleton DB connection (same pattern as government.activities.ts)
@@ -69,7 +69,7 @@ export async function createUnitInstance(input: {
   flowInstanceId: string;
   unitDefinitionId: string;
   nodeId: string;
-  config?: Record<string, any>;
+  config?: Record<string, unknown>;
 }): Promise<string> {
   const database = getDb();
   const [instance] = await database
@@ -100,11 +100,13 @@ export async function updateUnitInstance(input: {
     | 'failed'
     | 'skipped'
     | 'cancelled';
-  output?: Record<string, any>;
+  output?: Record<string, unknown>;
   assigneeId?: string;
 }) {
   const database = getDb();
-  const updates: any = { status: input.status };
+  const updates: Partial<typeof unitInstances.$inferInsert> = {
+    status: input.status,
+  };
 
   if (input.output) updates.output = input.output;
   if (input.assigneeId) updates.assigneeId = input.assigneeId;
@@ -129,11 +131,11 @@ export async function updateFlowInstance(input: {
   context?: Partial<FlowContext>;
 }) {
   const database = getDb();
-  const updates: any = {};
+  const updates: Partial<typeof flowInstances.$inferInsert> = {};
 
   if (input.status) updates.status = input.status;
   if (input.currentNodeIds) updates.currentNodeIds = input.currentNodeIds;
-  if (input.context) updates.context = input.context;
+  if (input.context) updates.context = input.context as FlowContext;
   if (
     input.status === 'completed' ||
     input.status === 'failed' ||
@@ -155,23 +157,28 @@ export async function updateFlowInstance(input: {
 export async function executeDocumentUnit(input: {
   unitInstanceId: string;
   flowInstanceId: string;
-  config: Record<string, any>;
+  config: Record<string, unknown>;
   context: FlowContext;
 }): Promise<{ documentId?: string; status: string }> {
   const database = getDb();
 
   try {
+    const template =
+      typeof input.config.template === 'string'
+        ? input.config.template
+        : 'default_template';
+
     // If autoGenerate, create document automatically
     if (input.config.autoGenerate) {
       const [doc] = await database
         .insert(documents)
         .values({
-          title: input.config.template || 'Generated Document',
-          fileUrl: '/generated/' + input.config.template + '.pdf',
+          title: template || 'Generated Document',
+          fileUrl: '/generated/' + template + '.pdf',
           mimeType: 'application/pdf',
           status: 'completed',
           authorId: input.context.roleAssignments['initiator'] || null,
-          metadata: { source: 'workflow', category: input.config.template },
+          metadata: { source: 'workflow', category: template },
         })
         .returning();
 
@@ -189,18 +196,20 @@ export async function executeDocumentUnit(input: {
       unitInstanceId: input.unitInstanceId,
       status: 'completed',
       output: {
-        template: input.config.template,
-        fields: input.config.fields || [],
+        template,
+        fields: (input.config.fields as string[]) || [],
         creator: input.config.creator,
       },
     });
 
     return { status: 'completed' };
-  } catch (error: any) {
+  } catch (error) {
     await updateUnitInstance({
       unitInstanceId: input.unitInstanceId,
       status: 'failed',
-      output: { error: error.message },
+      output: {
+        error: error instanceof Error ? error.message : String(error),
+      },
     });
     throw error;
   }
@@ -292,7 +301,7 @@ export async function activateTaskUnit(input: {
 
 export async function completeTaskUnit(input: {
   unitInstanceId: string;
-  result: Record<string, any>;
+  result: Record<string, unknown>;
 }) {
   await updateUnitInstance({
     unitInstanceId: input.unitInstanceId,
@@ -324,22 +333,26 @@ export async function evaluateCondition(input: {
       const completedNodes = ctx.completedNodes;
       // Find the most recent completed node that has an action output
       for (let i = completedNodes.length - 1; i >= 0; i--) {
-        const nodeOutput = ctx.nodeOutputs[completedNodes[i]];
-        if (nodeOutput?.action) return nodeOutput.action;
+        const nodeOutput = ctx.nodeOutputs[completedNodes[i]] as
+          | Record<string, unknown>
+          | undefined;
+        const action = nodeOutput?.action;
+        if (typeof action === 'string') return action;
       }
       return 'default';
     },
 
     // Check if amount exceeds threshold
     amount_threshold: (ctx) => {
-      const amount =
-        ctx.variables['estimatedCost'] || ctx.variables['totalAmount'] || 0;
+      const amount = (ctx.variables['estimatedCost'] ??
+        ctx.variables['totalAmount'] ??
+        0) as number;
       return Number(amount) > 100000 ? 'true' : 'false';
     },
 
     // Check urgency
     urgency_check: (ctx) => {
-      const urgency = ctx.variables['urgency'];
+      const urgency = ctx.variables['urgency'] as string | undefined;
       return urgency === 'high' || urgency === 'urgent' ? 'true' : 'false';
     },
   };
@@ -374,7 +387,7 @@ export async function sendNotification(input: {
   channel: string[];
   message: string;
   title?: string;
-  type?: string;
+  type?: NotificationType;
   flowDefinitionId?: string;
 }) {
   const database = getDb();
@@ -383,7 +396,7 @@ export async function sendNotification(input: {
   if (input.recipientId) {
     await database.insert(notifications).values({
       recipientId: input.recipientId,
-      type: (input.type as any) || 'info',
+      type: input.type || 'info',
       title: input.title || 'Workflow Notification',
       message: input.message,
       flowInstanceId: input.flowInstanceId,
@@ -425,7 +438,7 @@ export async function sendNotification(input: {
 
 export async function createNotification(input: {
   recipientId: string;
-  type: string;
+  type: NotificationType;
   title: string;
   message: string;
   flowInstanceId: string;
@@ -438,7 +451,7 @@ export async function createNotification(input: {
   const database = getDb();
   await database.insert(notifications).values({
     recipientId: input.recipientId,
-    type: input.type as any,
+    type: input.type,
     title: input.title,
     message: input.message,
     flowInstanceId: input.flowInstanceId,
@@ -452,56 +465,58 @@ export async function createNotification(input: {
 // executeAutomation — Dispatch to named handler functions
 // ---------------------------------------------------------------------------
 
+type AutomationConfig = Record<string, unknown>;
+type AutomationResult = Record<string, unknown>;
+
 export async function executeAutomation(input: {
   unitInstanceId: string;
   flowInstanceId: string;
   handler: string;
-  config: Record<string, any>;
+  config: AutomationConfig;
   context: FlowContext;
-}): Promise<Record<string, any>> {
-  const database = getDb();
+}): Promise<AutomationResult> {
+  const handlers: Record<
+    string,
+    (cfg: AutomationConfig, ctx: FlowContext) => AutomationResult
+  > = {
+    generateDocumentFromTemplate: (cfg) => {
+      const template =
+        typeof cfg.template === 'string' ? cfg.template : 'default_template';
+      console.log(
+        `[AUTOMATION] Generating document from template: ${template}`,
+      );
+      return { generated: true, template };
+    },
 
-  const handlers: Record<string, (cfg: any, ctx: FlowContext) => Promise<any>> =
-    {
-      generateDocumentFromTemplate: async (cfg, ctx) => {
-        const template = cfg.template || 'default_template';
-        console.log(
-          `[AUTOMATION] Generating document from template: ${template}`,
-        );
-        return { generated: true, template };
-      },
+    archiveDocuments: () => {
+      console.log(`[AUTOMATION] Archiving all documents for flow`);
+      return { archived: true, timestamp: new Date().toISOString() };
+    },
 
-      archiveDocuments: async (cfg, ctx) => {
-        console.log(`[AUTOMATION] Archiving all documents for flow`);
-        return { archived: true, timestamp: new Date().toISOString() };
-      },
+    generateRegistryNumber: () => {
+      const year = new Date().getFullYear();
+      const seq = String(Date.now() % 100000).padStart(5, '0');
+      const registryNumber = `REG-${year}-${seq}`;
+      console.log(`[AUTOMATION] Generated registry number: ${registryNumber}`);
+      return { registryNumber };
+    },
 
-      generateRegistryNumber: async (cfg, ctx) => {
-        const year = new Date().getFullYear();
-        const seq = String(Date.now() % 100000).padStart(5, '0');
-        const registryNumber = `REG-${year}-${seq}`;
-        console.log(
-          `[AUTOMATION] Generated registry number: ${registryNumber}`,
-        );
-        return { registryNumber };
-      },
-
-      validateDocumentFields: async (cfg, ctx) => {
-        const requiredFields = cfg.requiredFields || [];
-        const missingFields = requiredFields.filter(
-          (f: string) => !ctx.variables[f],
-        );
-        const isValid = missingFields.length === 0;
-        return { isValid, missingFields };
-      },
-    };
+    validateDocumentFields: (cfg, ctx) => {
+      const requiredFields = (cfg.requiredFields as string[]) || [];
+      const missingFields = requiredFields.filter(
+        (f: string) => !ctx.variables[f],
+      );
+      const isValid = missingFields.length === 0;
+      return { isValid, missingFields };
+    },
+  };
 
   const handlerFn = handlers[input.handler];
   if (!handlerFn) {
     throw new Error(`Unknown automation handler: ${input.handler}`);
   }
 
-  const result = await handlerFn(input.config, input.context);
+  const result = handlerFn(input.config, input.context);
 
   await updateUnitInstance({
     unitInstanceId: input.unitInstanceId,
@@ -514,7 +529,7 @@ export async function executeAutomation(input: {
     unitInstanceId: input.unitInstanceId,
     actorId: null,
     action: 'AUTOMATION_EXECUTED',
-    details: { handler: input.handler, result },
+    details: { handler: input.handler, ...result },
   });
 
   return result;
@@ -532,7 +547,7 @@ export async function recordAuditEntry(input: {
   fromStatus?: string;
   toStatus?: string;
   comment?: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 }) {
   const database = getDb();
   await database.insert(flowAuditLog).values({
@@ -543,7 +558,7 @@ export async function recordAuditEntry(input: {
     fromStatus: input.fromStatus,
     toStatus: input.toStatus,
     comment: input.comment,
-    metadata: input.details || {},
+    metadata: (input.details || {}) as Record<string, string>,
   });
 }
 
