@@ -1,20 +1,21 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { FlowsService } from './flows.service';
+import { unitTypeEnum, flowInstanceStatusEnum } from '@workflow/database';
 
 // ── DTOs ──────────────────────────────────────────────────────────────────
 
 class StartFlowDto {
-  flowDefinitionId: string;
-  roleAssignments: Record<string, string>;
-  variables: Record<string, any>;
+  flowDefinitionId!: string;
+  roleAssignments!: Record<string, string>;
+  variables!: Record<string, unknown>;
   startedBy?: string;
 }
 
 class SignalFlowDto {
-  nodeId: string;
-  action: string;
+  nodeId!: string;
+  action!: string;
   comment?: string;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
 }
 
 // ── Controller ────────────────────────────────────────────────────────────
@@ -58,7 +59,9 @@ export class FlowsController {
 
   // GET /api/unit-definitions — List unit catalog
   @Get('unit-definitions')
-  async getUnitDefinitions(@Query('type') type?: string) {
+  async getUnitDefinitions(
+    @Query('type') type?: (typeof unitTypeEnum.enumValues)[number],
+  ) {
     return this.flowsService.getUnitDefinitions(type);
   }
 
@@ -76,7 +79,10 @@ export class FlowsController {
 
   // GET /api/flow-instances — List all flow instances
   @Get('flow-instances')
-  async listFlowInstances(@Query('status') status?: string) {
+  async listFlowInstances(
+    @Query('status')
+    status?: (typeof flowInstanceStatusEnum.enumValues)[number],
+  ) {
     return this.flowsService.listFlowInstances(status);
   }
 }

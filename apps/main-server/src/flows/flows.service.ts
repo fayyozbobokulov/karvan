@@ -8,15 +8,14 @@ import {
 import { eq, desc, and } from 'drizzle-orm';
 import {
   DRIZZLE,
-  TASK_QUEUES,
-  WORKFLOW_TYPES,
   unitDefinitions,
   flowDefinitions,
   flowInstances,
   unitInstances,
   flowAuditLog,
   users,
-  type FlowNode,
+  unitTypeEnum,
+  flowInstanceStatusEnum,
 } from '@workflow/database';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type * as schema from '@workflow/database';
@@ -73,7 +72,7 @@ export class FlowsService {
       .returning();
 
     // 3. Start Temporal workflow
-    const graph = flowDef.graph as FlowNode[];
+    const graph = flowDef.graph;
 
     await this.temporalService.startFlowGraphWorkflow({
       flowInstanceId: flowInstance.id,
@@ -134,7 +133,7 @@ export class FlowsService {
     try {
       await this.db.insert(flowAuditLog).values({
         flowInstanceId,
-        actorId: signal.data?.actorId || null,
+        actorId: (signal.data?.actorId as string) || null,
         action: signal.action,
         comment: signal.comment,
         metadata: { nodeId: signal.nodeId, ...signal.data },
@@ -164,24 +163,33 @@ export class FlowsService {
       const temporalStatus = await this.temporalService.queryFlowStatus(
         instance.temporalWorkflowId,
       );
-      return {
-        ...temporalStatus,
-        flowInstanceId,
-        flowDefinitionId: instance.flowDefinitionId,
-        dbStatus: instance.status,
-      };
+      if (temporalStatus) {
+        return {
+          ...temporalStatus,
+          flowInstanceId,
+          flowDefinitionId: instance.flowDefinitionId,
+          dbStatus: instance.status,
+        };
+      }
     } catch {
-      // If Temporal query fails (workflow finished), return DB state
-      return {
-        flowInstanceId,
-        flowDefinitionId: instance.flowDefinitionId,
-        status: instance.status,
-        activeNodes: instance.currentNodeIds,
-        completedNodes: [],
-        history: [],
-        dbStatus: instance.status,
-      };
+      // If Temporal query fails (workflow finished), fall through to DB state
     }
+
+    return {
+      flowInstanceId,
+      flowDefinitionId: instance.flowDefinitionId,
+      status: instance.status,
+      activeNodes: instance.currentNodeIds,
+      completedNodes: [] as string[],
+      history: [] as Array<{
+        nodeId: string;
+        label: string;
+        unitType: string;
+        status: string;
+        timestamp: string;
+      }>,
+      dbStatus: instance.status,
+    };
   }
 
   // ── Get audit trail for a flow ────────────────────────────────────────
@@ -196,7 +204,7 @@ export class FlowsService {
 
   // ── List all unit definitions ─────────────────────────────────────────
 
-  async getUnitDefinitions(type?: string) {
+  async getUnitDefinitions(type?: (typeof unitTypeEnum.enumValues)[number]) {
     if (type) {
       return await this.db
         .select()
@@ -204,7 +212,7 @@ export class FlowsService {
         .where(
           and(
             eq(unitDefinitions.isActive, true),
-            eq(unitDefinitions.type, type as any),
+            eq(unitDefinitions.type, type),
           ),
         );
     }
@@ -283,7 +291,9 @@ export class FlowsService {
 
   // ── List all flow instances ───────────────────────────────────────────
 
-  async listFlowInstances(status?: string) {
+  async listFlowInstances(
+    status?: (typeof flowInstanceStatusEnum.enumValues)[number],
+  ) {
     const query = this.db
       .select({
         flowInstance: flowInstances,
@@ -298,7 +308,7 @@ export class FlowsService {
       .leftJoin(users, eq(flowInstances.startedBy, users.id));
 
     const results = status
-      ? await query.where(eq(flowInstances.status, status as any))
+      ? await query.where(eq(flowInstances.status, status))
       : await query;
 
     return results

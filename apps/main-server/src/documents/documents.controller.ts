@@ -8,18 +8,18 @@ import {
 } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
 import { TemporalService } from '../temporal/temporal.service';
-import { TASK_QUEUES } from '@workflow/database';
+import { TASK_QUEUES, type InsertDocument } from '@workflow/database';
 
 class SubmitDocumentDto {
-  title: string;
-  authorId: string;
-  fileUrl: string;
-  metadata: any;
+  title!: string;
+  authorId!: string;
+  fileUrl!: string;
+  metadata?: InsertDocument['metadata'];
   approvalLevels?: string[];
 }
 
 class ActionDto {
-  action: string;
+  action!: string;
   comment?: string;
 }
 
@@ -33,9 +33,7 @@ export class DocumentsController {
   @Post('submit')
   async submitDocument(@Body() dto: SubmitDocumentDto) {
     const doc = await this.documentsService.create(dto);
-    const blueprint = this.documentsService.buildGovernmentBlueprint(
-      dto.approvalLevels,
-    );
+    const blueprint = this.documentsService.buildGovernmentBlueprint();
 
     const handle = await this.temporalClient
       .getClient()
@@ -64,7 +62,7 @@ export class DocumentsController {
       .getClient()
       .workflow.getHandle(`gov-doc-${documentId}`);
 
-    const status: any = await handle.query('getStatus');
+    const status = await handle.query<{ currentStage: string }>('getStatus');
 
     switch (status.currentStage) {
       case 'in_review':

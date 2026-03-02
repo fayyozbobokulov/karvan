@@ -1,13 +1,11 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { eq, desc } from 'drizzle-orm';
 import {
   DRIZZLE,
   documents,
-  tasks,
   auditLogs,
-  type InsertDocument,
   type SelectDocument,
-  type SelectTask,
+  type InsertDocument,
 } from '@workflow/database';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type * as schema from '@workflow/database';
@@ -20,12 +18,9 @@ export class DocumentsService {
     private readonly temporalService: TemporalService,
   ) {}
 
-  async create(data: {
-    title: string;
-    authorId: string;
-    fileUrl: string;
-    metadata: any;
-  }): Promise<SelectDocument> {
+  async create(
+    data: Pick<InsertDocument, 'title' | 'authorId' | 'fileUrl' | 'metadata'>,
+  ): Promise<SelectDocument> {
     const [document] = await this.db
       .insert(documents)
       .values({
@@ -41,7 +36,7 @@ export class DocumentsService {
     return document as SelectDocument;
   }
 
-  buildGovernmentBlueprint(approvalLevels?: string[]): any {
+  buildGovernmentBlueprint() {
     return {
       workflowId: 'gov-doc-exchange',
       version: '1.0',

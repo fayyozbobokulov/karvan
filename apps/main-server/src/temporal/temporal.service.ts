@@ -13,6 +13,20 @@ import {
   type FlowContext,
 } from '@workflow/database';
 
+export interface FlowStatusResult {
+  flowInstanceId: string;
+  status: string;
+  activeNodes: string[];
+  completedNodes: string[];
+  history: Array<{
+    nodeId: string;
+    label: string;
+    unitType: string;
+    status: string;
+    timestamp: string;
+  }>;
+}
+
 @Injectable()
 export class TemporalService implements OnModuleInit {
   private client!: Client;
@@ -136,10 +150,12 @@ export class TemporalService implements OnModuleInit {
     }
   }
 
-  async queryFlowStatus(temporalWorkflowId: string): Promise<any> {
+  async queryFlowStatus(
+    temporalWorkflowId: string,
+  ): Promise<FlowStatusResult | null> {
     try {
       const handle = this.client.workflow.getHandle(temporalWorkflowId);
-      return await handle.query('getFlowStatus');
+      return await handle.query<FlowStatusResult>('getFlowStatus');
     } catch (error) {
       if (error instanceof WorkflowNotFoundError) {
         return null;
