@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -38,8 +36,13 @@ services:
       - POSTGRES_PWD=password
       - POSTGRES_SEEDS=postgres
       - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
-    volumes:
-      - ./config/dynamicconfig:/etc/temporal/config/dynamicconfig
+    entrypoint: >
+      /bin/sh -c "
+        mkdir -p /tmp/dynamicconfig &&
+        echo '# Empty dynamic config - using defaults' > /tmp/dynamicconfig/development-sql.yaml &&
+        export DYNAMIC_CONFIG_FILE_PATH=/tmp/dynamicconfig/development-sql.yaml &&
+        exec /etc/temporal/entrypoint.sh autosetup
+      "
     depends_on:
       - postgres
     networks:
