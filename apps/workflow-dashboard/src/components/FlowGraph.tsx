@@ -1,5 +1,3 @@
-import { UnitTypeBadge } from "./UnitTypeBadge";
-
 interface FlowNode {
   id: string;
   unit: string;
@@ -45,7 +43,6 @@ const STATUS_COLORS: Record<
 // Simple layout: assign columns using topological order
 function layoutNodes(graph: FlowNode[]): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
-  const visited = new Set<string>();
   const columns = new Map<string, number>();
 
   // Calculate column (depth) for each node, tracking ancestors to detect cycles
@@ -222,22 +219,6 @@ export function FlowGraph({
 
           const status = getNodeStatus(node.id);
           const colors = STATUS_COLORS[status] || STATUS_COLORS.pending;
-          const instance = instanceMap.get(node.id);
-          const unitType = node.unit.split(":")[0].toUpperCase();
-
-          // Map short prefix to full type
-          const typeMap: Record<string, string> = {
-            DOC: "DOCUMENT",
-            ACTION: "ACTION",
-            TASK: "TASK",
-            COND: "CONDITION",
-            NOTIFY: "NOTIFICATION",
-            AUTO: "AUTOMATION",
-            GATE: "GATE",
-            PARALLEL: "PARALLEL",
-          };
-          const fullType = typeMap[unitType] || instance?.unitType || unitType;
-
           return (
             <g key={node.id}>
               {/* Node background */}

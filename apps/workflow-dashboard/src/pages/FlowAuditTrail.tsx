@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Shield, Clock, User, ArrowRight } from "lucide-react";
+import { Shield, Clock, ArrowRight } from "lucide-react";
 
 interface FlowInstance {
   id: string;
@@ -18,7 +18,7 @@ interface AuditEntry {
   fromStatus?: string;
   toStatus?: string;
   comment?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   createdAt: string;
 }
 
@@ -197,7 +197,7 @@ export function FlowAuditTrail({ instances, apiBase }: FlowAuditTrailProps) {
                   <div
                     key={entry.id}
                     className="timeline-event"
-                    style={{ "--dot-color": color } as any}
+                    style={{ "--dot-color": color } as React.CSSProperties}
                   >
                     <style>{`
                       .timeline-event[style*="--dot-color"]::before {
