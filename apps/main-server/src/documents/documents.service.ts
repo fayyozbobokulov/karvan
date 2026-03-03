@@ -9,13 +9,11 @@ import {
 } from '@workflow/database';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type * as schema from '@workflow/database';
-import { TemporalService } from '../temporal/temporal.service';
 
 @Injectable()
 export class DocumentsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: NodePgDatabase<typeof schema>,
-    private readonly temporalService: TemporalService,
   ) {}
 
   async create(
