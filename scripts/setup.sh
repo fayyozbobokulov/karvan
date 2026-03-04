@@ -28,7 +28,7 @@ for app in apps/*; do
 done
 
 echo "🐳 Starting Docker services..."
-docker-compose up -d
+docker compose up -d
 
 echo "⏳ Waiting for Postgres to be ready..."
 until docker exec workflow-postgres pg_isready -U user -d workflow_db; do

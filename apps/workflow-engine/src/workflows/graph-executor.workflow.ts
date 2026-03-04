@@ -32,7 +32,8 @@ type FlowInstanceStatus =
   | 'waiting'
   | 'completed'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'paused';
 
 interface FlowInput {
   flowInstanceId: string;
@@ -66,6 +67,10 @@ type HumanDecision = Record<string, unknown> & {
 
 export const humanDecisionSignal =
   defineSignal<[HumanDecision]>('humanDecision');
+export const cancelFlowSignal =
+  defineSignal<[{ reason?: string }]>('cancelFlow');
+export const pauseFlowSignal = defineSignal('pauseFlow');
+export const resumeFlowSignal = defineSignal('resumeFlow');
 
 // ── Queries ──────────────────────────────────────────────────────────────────
 
@@ -93,6 +98,7 @@ const {
   executeAutomation,
   recordAuditEntry,
   handleTimeout,
+  cancelActiveUnits,
 } = proxyActivities<typeof unitActivities>({
   startToCloseTimeout: '10 minutes',
   retry: { maximumAttempts: 3 },
@@ -122,8 +128,26 @@ export async function executeFlowGraph(input: FlowInput) {
   // Signal storage — human decisions arrive here
   const pendingDecisions: Map<string, HumanDecision> = new Map();
 
+  // Cancel / Pause flags
+  let cancellationRequested = false;
+  let cancellationReason: string | undefined;
+  let paused = false;
+
   setHandler(humanDecisionSignal, (decision: HumanDecision) => {
     pendingDecisions.set(decision.nodeId, decision);
+  });
+
+  setHandler(cancelFlowSignal, (payload: { reason?: string }) => {
+    cancellationRequested = true;
+    cancellationReason = payload.reason;
+  });
+
+  setHandler(pauseFlowSignal, () => {
+    paused = true;
+  });
+
+  setHandler(resumeFlowSignal, () => {
+    paused = false;
   });
 
   // Query handler — UI can ask for current state anytime
@@ -141,6 +165,21 @@ export async function executeFlowGraph(input: FlowInput) {
   // ── Core: Execute a single node ──────────────────────────────────────────
 
   async function executeNode(nodeId: string): Promise<void> {
+    // If cancelled, cancel all active units and return early
+    if (cancellationRequested) {
+      await cancelActiveUnits({ flowInstanceId });
+      return;
+    }
+
+    // If paused, block until resumed
+    if (paused) {
+      overallStatus = 'paused';
+      await updateFlowInstance({ flowInstanceId, status: 'paused' });
+      await condition(() => !paused);
+      overallStatus = 'running';
+      await updateFlowInstance({ flowInstanceId, status: 'running' });
+    }
+
     const node = getNode(nodeId);
     if (!node) throw new Error(`Node ${nodeId} not found in graph`);
 
@@ -225,11 +264,16 @@ export async function executeFlowGraph(input: FlowInput) {
           );
 
           const docSignalReceived = await condition(
-            () => pendingDecisions.has(nodeId),
+            () => pendingDecisions.has(nodeId) || cancellationRequested,
             docTimeoutMs,
           );
 
           overallStatus = 'running';
+
+          if (cancellationRequested) {
+            await cancelActiveUnits({ flowInstanceId });
+            return;
+          }
 
           if (!docSignalReceived) {
             result = { action: 'TIMEOUT', documentId: docResult.documentId };
@@ -308,11 +352,16 @@ export async function executeFlowGraph(input: FlowInput) {
         );
 
         const signalReceived = await condition(
-          () => pendingDecisions.has(nodeId),
+          () => pendingDecisions.has(nodeId) || cancellationRequested,
           timeoutMs,
         );
 
         overallStatus = 'running';
+
+        if (cancellationRequested) {
+          await cancelActiveUnits({ flowInstanceId });
+          return;
+        }
 
         if (!signalReceived) {
           result = { action: 'TIMEOUT' };
@@ -400,11 +449,16 @@ export async function executeFlowGraph(input: FlowInput) {
         );
 
         const signalReceived = await condition(
-          () => pendingDecisions.has(nodeId),
+          () => pendingDecisions.has(nodeId) || cancellationRequested,
           timeoutMs,
         );
 
         overallStatus = 'running';
+
+        if (cancellationRequested) {
+          await cancelActiveUnits({ flowInstanceId });
+          return;
+        }
 
         if (!signalReceived) {
           result = { action: 'TIMEOUT' };
@@ -598,10 +652,18 @@ export async function executeFlowGraph(input: FlowInput) {
     if (!rootNode) throw new Error('Flow graph must have a node with id "1"');
 
     await executeNode('1');
-    overallStatus = 'completed';
+    if (cancellationRequested) {
+      overallStatus = 'cancelled';
+    } else {
+      overallStatus = 'completed';
+    }
   } catch (error) {
-    overallStatus = 'failed';
-    throw error;
+    if (cancellationRequested) {
+      overallStatus = 'cancelled';
+    } else {
+      overallStatus = 'failed';
+      throw error;
+    }
   } finally {
     await updateFlowInstance({
       flowInstanceId,
@@ -612,7 +674,9 @@ export async function executeFlowGraph(input: FlowInput) {
     const creatorId = ctx.roleAssignments['initiator'] || '';
     if (
       creatorId &&
-      (overallStatus === 'completed' || overallStatus === 'failed')
+      (overallStatus === 'completed' ||
+        overallStatus === 'failed' ||
+        overallStatus === 'cancelled')
     ) {
       await createNotification({
         recipientId: creatorId,

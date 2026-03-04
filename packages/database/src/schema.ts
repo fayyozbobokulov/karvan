@@ -63,6 +63,7 @@ export const flowInstanceStatusEnum = pgEnum("flow_instance_status", [
   "completed",
   "failed",
   "cancelled",
+  "paused",
 ]);
 
 export const unitInstanceStatusEnum = pgEnum("unit_instance_status", [

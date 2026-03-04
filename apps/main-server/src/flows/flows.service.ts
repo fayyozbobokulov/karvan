@@ -147,6 +147,114 @@ export class FlowsService {
     return { status: 'ok' };
   }
 
+  // ── Cancel a running flow ────────────────────────────────────────────
+
+  async cancelFlow(flowInstanceId: string, reason?: string) {
+    const [instance] = await this.db
+      .select()
+      .from(flowInstances)
+      .where(eq(flowInstances.id, flowInstanceId));
+
+    if (!instance) {
+      throw new NotFoundException(`Flow instance not found: ${flowInstanceId}`);
+    }
+
+    const cancellableStatuses = ['running', 'waiting', 'paused'];
+    if (!cancellableStatuses.includes(instance.status)) {
+      throw new ConflictException(
+        `Flow instance ${flowInstanceId} is in status "${instance.status}" and cannot be cancelled`,
+      );
+    }
+
+    await this.temporalService.cancelFlow(instance.temporalWorkflowId, reason);
+
+    try {
+      await this.db.insert(flowAuditLog).values({
+        flowInstanceId,
+        action: 'CANCEL',
+        comment: reason,
+        metadata: {},
+      });
+    } catch (auditError) {
+      this.logger.error(
+        `Audit log write failed after cancel signal for flow ${flowInstanceId}: ${auditError}`,
+      );
+    }
+
+    return { status: 'ok' };
+  }
+
+  // ── Pause a running flow ───────────────────────────────────────────
+
+  async pauseFlow(flowInstanceId: string) {
+    const [instance] = await this.db
+      .select()
+      .from(flowInstances)
+      .where(eq(flowInstances.id, flowInstanceId));
+
+    if (!instance) {
+      throw new NotFoundException(`Flow instance not found: ${flowInstanceId}`);
+    }
+
+    const pausableStatuses = ['running', 'waiting'];
+    if (!pausableStatuses.includes(instance.status)) {
+      throw new ConflictException(
+        `Flow instance ${flowInstanceId} is in status "${instance.status}" and cannot be paused`,
+      );
+    }
+
+    await this.temporalService.pauseFlow(instance.temporalWorkflowId);
+
+    try {
+      await this.db.insert(flowAuditLog).values({
+        flowInstanceId,
+        action: 'PAUSE',
+        metadata: {},
+      });
+    } catch (auditError) {
+      this.logger.error(
+        `Audit log write failed after pause signal for flow ${flowInstanceId}: ${auditError}`,
+      );
+    }
+
+    return { status: 'ok' };
+  }
+
+  // ── Resume a paused flow ──────────────────────────────────────────
+
+  async resumeFlow(flowInstanceId: string) {
+    const [instance] = await this.db
+      .select()
+      .from(flowInstances)
+      .where(eq(flowInstances.id, flowInstanceId));
+
+    if (!instance) {
+      throw new NotFoundException(`Flow instance not found: ${flowInstanceId}`);
+    }
+
+    if (instance.status !== 'paused') {
+      throw new ConflictException(
+        `Flow instance ${flowInstanceId} is in status "${instance.status}" and cannot be resumed`,
+      );
+    }
+
+    await this.temporalService.resumeFlow(instance.temporalWorkflowId);
+
+    try {
+      await this.db.insert(flowAuditLog).values({
+        flowInstanceId,
+        action: 'RESUME',
+        metadata: {},
+      });
+    } catch (auditError) {
+      this.logger.error(
+        `Audit log write failed after resume signal for flow ${flowInstanceId}: ${auditError}`,
+      );
+    }
+
+    return { status: 'ok' };
+  }
+
   // ── Query flow status from Temporal ───────────────────────────────────
 
   async getFlowStatus(flowInstanceId: string) {
