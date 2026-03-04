@@ -101,6 +101,53 @@ export class TemporalService implements OnModuleInit {
     }
   }
 
+  async cancelFlow(temporalWorkflowId: string, reason?: string): Promise<void> {
+    try {
+      const handle = this.client.workflow.getHandle(temporalWorkflowId);
+      await handle.signal('cancelFlow', { reason });
+      this.logger.log(
+        `Sent cancelFlow signal to ${temporalWorkflowId}: reason=${reason ?? 'none'}`,
+      );
+    } catch (error) {
+      if (error instanceof WorkflowNotFoundError) {
+        throw new BadRequestException(
+          `Workflow ${temporalWorkflowId} is already completed or terminated`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async pauseFlow(temporalWorkflowId: string): Promise<void> {
+    try {
+      const handle = this.client.workflow.getHandle(temporalWorkflowId);
+      await handle.signal('pauseFlow');
+      this.logger.log(`Sent pauseFlow signal to ${temporalWorkflowId}`);
+    } catch (error) {
+      if (error instanceof WorkflowNotFoundError) {
+        throw new BadRequestException(
+          `Workflow ${temporalWorkflowId} is already completed or terminated`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async resumeFlow(temporalWorkflowId: string): Promise<void> {
+    try {
+      const handle = this.client.workflow.getHandle(temporalWorkflowId);
+      await handle.signal('resumeFlow');
+      this.logger.log(`Sent resumeFlow signal to ${temporalWorkflowId}`);
+    } catch (error) {
+      if (error instanceof WorkflowNotFoundError) {
+        throw new BadRequestException(
+          `Workflow ${temporalWorkflowId} is already completed or terminated`,
+        );
+      }
+      throw error;
+    }
+  }
+
   async queryFlowStatus(
     temporalWorkflowId: string,
   ): Promise<FlowStatusResult | null> {

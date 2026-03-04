@@ -18,6 +18,10 @@ class SignalFlowDto {
   data?: Record<string, unknown>;
 }
 
+class CancelFlowDto {
+  reason?: string;
+}
+
 // ── Controller ────────────────────────────────────────────────────────────
 
 @Controller('api')
@@ -37,6 +41,27 @@ export class FlowsController {
     @Body() dto: SignalFlowDto,
   ) {
     return this.flowsService.signalFlow(flowInstanceId, dto);
+  }
+
+  // POST /api/flows/:id/cancel — Cancel a running flow
+  @Post('flows/:id/cancel')
+  async cancelFlow(
+    @Param('id') flowInstanceId: string,
+    @Body() dto: CancelFlowDto,
+  ) {
+    return this.flowsService.cancelFlow(flowInstanceId, dto.reason);
+  }
+
+  // POST /api/flows/:id/pause — Pause a running flow
+  @Post('flows/:id/pause')
+  async pauseFlow(@Param('id') flowInstanceId: string) {
+    return this.flowsService.pauseFlow(flowInstanceId);
+  }
+
+  // POST /api/flows/:id/resume — Resume a paused flow
+  @Post('flows/:id/resume')
+  async resumeFlow(@Param('id') flowInstanceId: string) {
+    return this.flowsService.resumeFlow(flowInstanceId);
   }
 
   // GET /api/flows/:id/status — Query Temporal for current state

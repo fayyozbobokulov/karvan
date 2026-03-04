@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray, and } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import {
@@ -126,7 +126,13 @@ export async function updateUnitInstance(input: {
 
 export async function updateFlowInstance(input: {
   flowInstanceId: string;
-  status?: 'running' | 'waiting' | 'completed' | 'failed' | 'cancelled';
+  status?:
+    | 'running'
+    | 'waiting'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
+    | 'paused';
   currentNodeIds?: string[];
   context?: Partial<FlowContext>;
 }) {
@@ -640,4 +646,21 @@ export async function handleTimeout(input: {
     action: 'TIMEOUT',
     details: { nodeId: input.nodeId },
   });
+}
+
+// ---------------------------------------------------------------------------
+// cancelActiveUnits — Bulk-cancel all active/pending unit instances for a flow
+// ---------------------------------------------------------------------------
+
+export async function cancelActiveUnits(input: { flowInstanceId: string }) {
+  const database = getDb();
+  await database
+    .update(unitInstances)
+    .set({ status: 'cancelled', completedAt: new Date() })
+    .where(
+      and(
+        eq(unitInstances.flowInstanceId, input.flowInstanceId),
+        inArray(unitInstances.status, ['active', 'pending']),
+      ),
+    );
 }
