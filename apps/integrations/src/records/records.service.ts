@@ -1,11 +1,10 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { eq, desc, and, sql, type SQL } from 'drizzle-orm';
 import {
   DRIZZLE,
   records,
   recordTypes,
   recordHistory,
-  type InsertRecord,
   type InsertRecordType,
 } from '@workflow/database';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -27,7 +26,7 @@ export class RecordsService {
     limit?: number;
     offset?: number;
   }) {
-    const conditions = [];
+    const conditions: SQL[] = [];
 
     if (filters.pinpp) {
       conditions.push(eq(records.pinpp, filters.pinpp));

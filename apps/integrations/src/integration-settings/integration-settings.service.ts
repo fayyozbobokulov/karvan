@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, type SQL } from 'drizzle-orm';
 import {
   DRIZZLE,
   integrationSettings,
@@ -23,7 +23,7 @@ export class IntegrationSettingsService {
     isActive?: boolean;
     serviceName?: string;
   }) {
-    const conditions = [];
+    const conditions: SQL[] = [];
 
     if (filters.category) {
       conditions.push(eq(integrationSettings.category, filters.category));

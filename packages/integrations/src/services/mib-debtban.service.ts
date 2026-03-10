@@ -8,7 +8,6 @@ export class MibDebtbanService extends BaseIntegrationService {
         "travel_ban_by_pinfl",
         "travel_ban_by_passport",
         "travel_ban_by_tin",
-        "travel_ban_unified",
       ],
       serviceName: "egov_mib",
       category: "legal",

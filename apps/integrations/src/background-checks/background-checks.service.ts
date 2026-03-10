@@ -5,7 +5,7 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { eq, desc, and, sql, type SQL } from 'drizzle-orm';
 import {
   DRIZZLE,
   backgroundChecks,
@@ -98,7 +98,7 @@ export class BackgroundChecksService {
     limit?: number;
     offset?: number;
   }) {
-    const conditions = [];
+    const conditions: SQL[] = [];
 
     if (filters.status) {
       conditions.push(eq(backgroundChecks.status, filters.status as any));
