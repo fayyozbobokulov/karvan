@@ -1,5 +1,11 @@
 export type HttpMethod = "get" | "post" | "put" | "delete" | "patch";
 
+/** Configuration injected from the host application — no process.env in this package. */
+export interface IntegrationConfig {
+  /** Default base URL for all eGov API calls (e.g. "https://apimgw.egov.uz:8243") */
+  baseUrl: string;
+}
+
 export interface IntegrationToken {
   accessToken: string;
   tokenType: string;

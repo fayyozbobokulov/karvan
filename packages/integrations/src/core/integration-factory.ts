@@ -1,6 +1,7 @@
 import { HttpClient } from "./http-client.js";
 import { IntegrationRegistry } from "./integration-registry.js";
 import type { BaseIntegrationService } from "./base-integration.service.js";
+import type { IntegrationConfig } from "./types.js";
 
 import { GcpDocrestService } from "../services/gcp-docrest.service.js";
 import { GcpRestService } from "../services/gcp-rest.service.js";
@@ -38,6 +39,7 @@ import { DtmNostrificationService } from "../services/dtm-nostrification.service
 
 type ServiceConstructor = new (
   httpClient: HttpClient,
+  config: IntegrationConfig,
 ) => BaseIntegrationService;
 
 const ALL_SERVICES: ServiceConstructor[] = [
@@ -79,8 +81,10 @@ const ALL_SERVICES: ServiceConstructor[] = [
 export class IntegrationFactory {
   private registry: IntegrationRegistry;
   private httpClient: HttpClient;
+  private config: IntegrationConfig;
 
-  constructor(httpClient?: HttpClient) {
+  constructor(config: IntegrationConfig, httpClient?: HttpClient) {
+    this.config = config;
     this.httpClient = httpClient ?? new HttpClient();
     this.registry = new IntegrationRegistry();
     this.registerAll();
@@ -88,7 +92,7 @@ export class IntegrationFactory {
 
   private registerAll(): void {
     for (const ServiceClass of ALL_SERVICES) {
-      const instance = new ServiceClass(this.httpClient);
+      const instance = new ServiceClass(this.httpClient, this.config);
       this.registry.register(instance);
     }
   }

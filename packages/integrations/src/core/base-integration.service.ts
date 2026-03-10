@@ -3,6 +3,7 @@ import { DefaultTransformer } from "./default-transformer.js";
 import { DefaultErrorHandler } from "./default-error-handler.js";
 import { replacePlaceholders, getByPath } from "./utils.js";
 import type {
+  IntegrationConfig,
   IntegrationRequest,
   IntegrationCallResult,
   IntegrationResponse,
@@ -13,11 +14,13 @@ import type {
 
 export abstract class BaseIntegrationService {
   protected httpClient: HttpClient;
+  protected config: IntegrationConfig;
   protected defaultTransformer: DefaultTransformer;
   protected defaultErrorHandler: DefaultErrorHandler;
 
-  constructor(httpClient: HttpClient) {
+  constructor(httpClient: HttpClient, config: IntegrationConfig) {
     this.httpClient = httpClient;
+    this.config = config;
     this.defaultTransformer = new DefaultTransformer();
     this.defaultErrorHandler = new DefaultErrorHandler();
   }
@@ -129,8 +132,7 @@ export abstract class BaseIntegrationService {
   }
 
   protected buildUrl(request: IntegrationRequest): string {
-    const baseUrl =
-      request.setting.baseUrl || process.env["EGOV_API_BASE_URL"] || "";
+    const baseUrl = request.setting.baseUrl || this.config.baseUrl;
     return `${baseUrl}${request.setting.endpoint}`;
   }
 

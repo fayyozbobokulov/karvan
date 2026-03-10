@@ -28,12 +28,14 @@ export interface IntegrationSettingParam {
   responseMapping?: Record<string, string> | null;
 }
 
-// Singleton factory per worker process
+// Singleton factory per worker process — reads env vars once at startup
 let factory: IntegrationFactory | null = null;
 
 function getFactory(): IntegrationFactory {
   if (!factory) {
-    factory = new IntegrationFactory();
+    factory = new IntegrationFactory({
+      baseUrl: process.env.EGOV_API_BASE_URL || '',
+    });
   }
   return factory;
 }

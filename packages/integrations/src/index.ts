@@ -10,6 +10,7 @@ export { getByPath, replacePlaceholders } from "./core/utils.js";
 // Types
 export type {
   HttpMethod,
+  IntegrationConfig,
   IntegrationToken,
   IntegrationSettingConfig,
   PollingConfig,
