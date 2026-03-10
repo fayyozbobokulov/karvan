@@ -1,6 +1,6 @@
 # eGov Integration API Reference
 
-All 67 integration methods from the Uzbekistan eGov API gateway, organized by endpoint.
+All 68 integration methods from the Uzbekistan eGov API gateway, organized by endpoint.
 
 ## Base Configuration
 
@@ -11,6 +11,14 @@ All 67 integration methods from the Uzbekistan eGov API gateway, organized by en
 | Default Timeout    | 60000ms                                                                                                                  |
 | Content-Type       | `application/json`                                                                                                       |
 | Placeholder Syntax | `$variable_name` in `default_body` gets replaced with values from `search_criteria`                                      |
+
+## Authentication
+
+| File                           | Endpoint                                 | Description                             |
+| ------------------------------ | ---------------------------------------- | --------------------------------------- |
+| [auth-token.md](auth-token.md) | `https://iskm.egov.uz:9444/oauth2/token` | OAuth2 password grant token acquisition |
+
+All API calls require a Bearer token. See [auth-token.md](auth-token.md) for the full authentication flow, environment variables, and token caching strategy.
 
 ## Services
 
@@ -40,16 +48,16 @@ All 67 integration methods from the Uzbekistan eGov API gateway, organized by en
 | ------------------------------------------ | ----------------------------------- | -------------- |
 | [mvd-address-info.md](mvd-address-info.md) | `/mvd/services/address/info/pin/v1` | `address_info` |
 
-## Category: Legal (10 methods, 7 endpoints)
+## Category: Legal (11 methods, 8 endpoints)
 
-| File                                               | Endpoint                                         | Methods                                                              |
-| -------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------- |
-| [mvd-emamuriy.md](mvd-emamuriy.md)                 | `/mvd/services/emamuriy/v1/by-pinpp`             | `emamuriy`                                                           |
-| [mvd-person-probation.md](mvd-person-probation.md) | `/mvd/services/person/v1/*`                      | `person_probation_request`, `person_probation_response`              |
-| [convictions.md](convictions.md)                   | `/convictions/search/v2`, `/conviction/check/v2` | `conviction_search`, `conviction_check`                              |
-| [mib-alimony.md](mib-alimony.md)                   | `/mib/service/aliment/v2/pinfl`                  | `alimony`                                                            |
-| [mib-debtban.md](mib-debtban.md)                   | `/mib/service/debtban/v2/*`                      | `travel_ban_by_pinfl`, `travel_ban_by_passport`, `travel_ban_by_tin` |
-| [justice-migration.md](justice-migration.md)       | `/justice/service/migrant/v1`                    | `migration_info`                                                     |
+| File                                               | Endpoint                                         | Methods                                                                                    |
+| -------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| [mvd-emamuriy.md](mvd-emamuriy.md)                 | `/mvd/services/emamuriy/v1/by-pinpp`             | `emamuriy`                                                                                 |
+| [mvd-person-probation.md](mvd-person-probation.md) | `/mvd/services/person/v1/*`                      | `person_probation_request`, `person_probation_response`                                    |
+| [convictions.md](convictions.md)                   | `/convictions/search/v2`, `/conviction/check/v2` | `conviction_search`, `conviction_check`                                                    |
+| [mib-alimony.md](mib-alimony.md)                   | `/mib/service/aliment/v2/pinfl`                  | `alimony`                                                                                  |
+| [mib-debtban.md](mib-debtban.md)                   | `/mib/service/debtban/v2/*`                      | `travel_ban_by_pinfl`, `travel_ban_by_passport`, `travel_ban_by_tin`, `travel_ban_unified` |
+| [justice-migration.md](justice-migration.md)       | `/justice/service/migrant/v1`                    | `migration_info`                                                                           |
 
 ## Category: Civil Status (13 methods, 5 endpoints)
 

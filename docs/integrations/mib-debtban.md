@@ -6,7 +6,7 @@
 
 ## Overview
 
-Checks travel ban (debt ban) status through the MIB (Ministry of Internal Affairs Bureau of Compulsory Enforcement) service. Three lookup methods are available: by PINPP, by passport, or by TIN (Taxpayer Identification Number). Used for background checks to determine if a person or entity has active travel restrictions due to unpaid debts.
+Checks travel ban (debt ban) status through the MIB (Ministry of Internal Affairs Bureau of Compulsory Enforcement) service. Four lookup methods are available: by PINPP, by passport, by TIN (Taxpayer Identification Number), or a unified POST endpoint. Used for background checks to determine if a person or entity has active travel restrictions due to unpaid debts.
 
 ---
 
@@ -131,9 +131,46 @@ Standard API error handling. Non-200 responses are treated as failures.
 
 ---
 
+### `travel_ban_unified` (POST variant)
+
+| Field         | Value                     |
+| ------------- | ------------------------- |
+| HTTP Method   | POST                      |
+| Endpoint      | `/mib/service/debtban/v2` |
+| Service       | egov_mib                  |
+| Timeout       | 60000ms                   |
+| Requires Auth | Yes                       |
+
+> This is a unified POST endpoint found in the Postman collection (folder "27) Сведения о запрете выезда за границу (2-версия)"). Unlike the three GET variants above that use subpath-specific endpoints (`/pinfl`, `/passport`, `/stir`), this endpoint accepts a POST body with a PINFL-based lookup. The request body structure differs from the GET variants.
+
+#### Request Body
+
+```json
+{
+  "pRequestID": "123",
+  "applicantPinpp": "$pinpp"
+}
+```
+
+#### Placeholder Variables
+
+| Placeholder | Source                    | Description                                                |
+| ----------- | ------------------------- | ---------------------------------------------------------- |
+| `$pinpp`    | Flow context / user input | Personal Identification Number of the person being checked |
+
+#### Response Structure
+
+Default transform. Returns travel ban records for the given PINFL.
+
+#### Error Handling
+
+Standard API error handling. Non-200 responses are treated as failures.
+
+---
+
 ## Parent-Child Dependencies
 
-None. All three methods are independent lookup variants for the same debt ban check, differing only by identifier type (PINPP, passport, or TIN).
+None. All four methods are independent lookup variants for the same debt ban check, differing by identifier type (PINPP, passport, TIN) or request format (GET with query params vs POST with body).
 
 ## Postman Examples
 
@@ -182,6 +219,25 @@ curl -X GET 'https://apimgw.egov.uz:8243/mib/service/debtban/v2/stir?inn=1234567
 | `{{access_token}}` | _(OAuth2 token)_ | Bearer token obtained from the auth endpoint |
 | `{{tin}}`          | `123456789`      | Taxpayer Identification Number (INN)         |
 | `{{pnfl}}`         | `31002730280037` | PINFL used as `sender_pinfl`                 |
+
+### `travel_ban_unified` (POST variant)
+
+> Сведения о запрете выезда за границу (2-версия) — unified POST endpoint.
+
+```bash
+curl -X POST 'https://apimgw.egov.uz:8243/mib/service/debtban/v2' \
+  -H 'Authorization: Bearer {{access_token}}' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "pRequestID": "123",
+  "applicantPinpp": "31002730280037"
+}'
+```
+
+| Postman Variable   | Example Value    | Description                                  |
+| ------------------ | ---------------- | -------------------------------------------- |
+| `{{access_token}}` | _(OAuth2 token)_ | Bearer token obtained from the auth endpoint |
+| `{{pnfl}}`         | `31002730280037` | PINFL of the person being checked            |
 
 ---
 
