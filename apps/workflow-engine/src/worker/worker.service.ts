@@ -4,7 +4,7 @@ import { TASK_QUEUES } from '@workflow/database';
 import * as docActivities from '../activities/document.activities';
 import * as govActivities from '../activities/government.activities';
 import * as unitActivities from '../activities/unit.activities';
-import * as integrationActivities from '../activities/integration.activities';
+import * as integrationActivities from '../activities/integration/index';
 
 @Injectable()
 export class WorkerService implements OnModuleInit {

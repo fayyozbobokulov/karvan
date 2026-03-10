@@ -8,6 +8,7 @@ export const WORKFLOW_TYPES = {
   DOCUMENT_PROCESSING: "documentProcessingWorkflow",
   EXECUTE_FLOW_GRAPH: "executeFlowGraph",
   BACKGROUND_CHECK_ORCHESTRATOR: "backgroundCheckOrchestrator",
+  INTEGRATION_EXECUTION: "integrationExecution",
 } as const;
 
 export const DOCUMENT_STATUS = {
