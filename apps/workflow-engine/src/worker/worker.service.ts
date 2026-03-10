@@ -4,6 +4,7 @@ import { TASK_QUEUES } from '@workflow/database';
 import * as docActivities from '../activities/document.activities';
 import * as govActivities from '../activities/government.activities';
 import * as unitActivities from '../activities/unit.activities';
+import * as integrationActivities from '../activities/integration.activities';
 
 @Injectable()
 export class WorkerService implements OnModuleInit {
@@ -43,5 +44,20 @@ export class WorkerService implements OnModuleInit {
     );
 
     void flowWorker.run();
+
+    // New worker for integration processing (background checks)
+    const integrationWorker = await Worker.create({
+      connection,
+      namespace: 'default',
+      taskQueue: TASK_QUEUES.INTEGRATION_PROCESSING,
+      workflowsPath: require.resolve('../workflows'),
+      activities: { ...integrationActivities },
+    });
+
+    this.logger.log(
+      `Worker started on task queue "${TASK_QUEUES.INTEGRATION_PROCESSING}"`,
+    );
+
+    void integrationWorker.run();
   }
 }

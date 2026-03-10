@@ -15,6 +15,13 @@
       "when": 1772110765665,
       "tag": "0001_short_tana_nile",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773136396651,
+      "tag": "0002_deep_stephen_strange",
+      "breakpoints": true
     }
   ]
 }

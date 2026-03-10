@@ -506,3 +506,372 @@ export const selectNotificationSchema = createSelectSchema(notifications);
 
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type SelectNotification = z.infer<typeof selectNotificationSchema>;
+
+// ===========================================================================
+// INTEGRATION & BACKGROUND CHECK TABLES
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Integration Enums
+// ---------------------------------------------------------------------------
+
+export const backgroundCheckStatusEnum = pgEnum("background_check_status", [
+  "pending",
+  "submitted",
+  "processing",
+  "mapping",
+  "completed",
+  "failed",
+]);
+
+export const backgroundCheckErrorStageEnum = pgEnum(
+  "background_check_error_stage",
+  ["external_services", "mapping", "upsert"],
+);
+
+export const integrationStatusEnum = pgEnum("integration_status", [
+  "pending",
+  "running",
+  "success",
+  "completed",
+  "failed",
+  "skipped",
+  "api_failure",
+  "unauthorized",
+  "not_found",
+  "params_missing",
+  "timeout",
+]);
+
+export const recordHistoryActionEnum = pgEnum("record_history_action", [
+  "created",
+  "updated",
+  "deleted",
+  "completed",
+  "submitted",
+]);
+
+export const batchStatusEnum = pgEnum("batch_status", [
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+  "partial",
+]);
+
+// ---------------------------------------------------------------------------
+// Integration Settings — Config for 70+ eGov API methods
+// ---------------------------------------------------------------------------
+
+export interface PollingConfig {
+  intervalMs: number;
+  maxAttempts: number;
+  successCondition?: string;
+}
+
+export const integrationSettings = pgTable("integration_settings", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => uuidv7()),
+  methodName: text("method_name").notNull().unique(),
+  serviceName: text("service_name").notNull(),
+  httpMethod: text("http_method").notNull().default("POST"),
+  endpoint: text("endpoint").notNull(),
+  baseUrl: text("base_url"),
+  defaultBody: jsonb("default_body").$type<Record<string, any>>(),
+  defaultHeaders: jsonb("default_headers").$type<Record<string, any>>(),
+  defaultQueryParams: jsonb("default_query_params").$type<
+    Record<string, any>
+  >(),
+  description: text("description"),
+  category: text("category"),
+  timeout: integer("timeout").notNull().default(60000),
+  isActive: boolean("is_active").notNull().default(true),
+  requiresAuth: boolean("requires_auth").notNull().default(true),
+  parentId: text("parent_id"),
+  delayMs: integer("delay_ms").notNull().default(0),
+  pollingConfig: jsonb("polling_config").$type<PollingConfig>(),
+  responseMapping: jsonb("response_mapping").$type<Record<string, string>>(),
+  isAvailable: boolean("is_available").notNull().default(true),
+  lastCheckedAt: timestamp("last_checked_at"),
+  unavailableReason: text("unavailable_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertIntegrationSettingSchema =
+  createInsertSchema(integrationSettings);
+export const selectIntegrationSettingSchema =
+  createSelectSchema(integrationSettings);
+
+export type InsertIntegrationSetting = z.infer<
+  typeof insertIntegrationSettingSchema
+>;
+export type SelectIntegrationSetting = z.infer<
+  typeof selectIntegrationSettingSchema
+>;
+
+// ---------------------------------------------------------------------------
+// Background Check Batches — Batch tracking for bulk imports
+// ---------------------------------------------------------------------------
+
+export const backgroundCheckBatches = pgTable("background_check_batches", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => uuidv7()),
+  name: text("name"),
+  totalItems: integer("total_items").notNull().default(0),
+  status: batchStatusEnum("status").notNull().default("pending"),
+  pendingCount: integer("pending_count").notNull().default(0),
+  submittedCount: integer("submitted_count").notNull().default(0),
+  processingCount: integer("processing_count").notNull().default(0),
+  completedCount: integer("completed_count").notNull().default(0),
+  failedCount: integer("failed_count").notNull().default(0),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertBackgroundCheckBatchSchema = createInsertSchema(
+  backgroundCheckBatches,
+);
+export const selectBackgroundCheckBatchSchema = createSelectSchema(
+  backgroundCheckBatches,
+);
+
+export type InsertBackgroundCheckBatch = z.infer<
+  typeof insertBackgroundCheckBatchSchema
+>;
+export type SelectBackgroundCheckBatch = z.infer<
+  typeof selectBackgroundCheckBatchSchema
+>;
+
+// ---------------------------------------------------------------------------
+// Background Checks — Each row is one background check request
+// ---------------------------------------------------------------------------
+
+export const backgroundChecks = pgTable("background_checks", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => uuidv7()),
+  userId: text("user_id").references(() => users.id),
+  pinpp: text("pinpp"),
+  tin: text("tin"),
+  searchCriteria: jsonb("search_criteria")
+    .$type<Record<string, any>>()
+    .notNull(),
+  status: backgroundCheckStatusEnum("status").notNull().default("pending"),
+  externalServiceResults: jsonb("external_service_results").$type<
+    Record<string, any>
+  >(),
+  mappedData: jsonb("mapped_data").$type<Record<string, any>>(),
+  recordsUpsertResult: jsonb("records_upsert_result").$type<
+    Record<string, any>
+  >(),
+  submittedAt: timestamp("submitted_at"),
+  processingCompletedAt: timestamp("processing_completed_at"),
+  mappingCompletedAt: timestamp("mapping_completed_at"),
+  completedAt: timestamp("completed_at"),
+  errorMessage: text("error_message"),
+  errorStage: backgroundCheckErrorStageEnum("error_stage"),
+  batchId: text("batch_id").references(() => backgroundCheckBatches.id),
+  integrationSettingIds: jsonb("integration_setting_ids")
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  temporalWorkflowId: text("temporal_workflow_id").unique(),
+  userSnapshot: jsonb("user_snapshot").$type<Record<string, any>>(),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertBackgroundCheckSchema = createInsertSchema(backgroundChecks);
+export const selectBackgroundCheckSchema = createSelectSchema(backgroundChecks);
+
+export type InsertBackgroundCheck = z.infer<typeof insertBackgroundCheckSchema>;
+export type SelectBackgroundCheck = z.infer<typeof selectBackgroundCheckSchema>;
+
+// ---------------------------------------------------------------------------
+// Integrations — Individual integration execution results
+// ---------------------------------------------------------------------------
+
+export const integrations = pgTable("integrations", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => uuidv7()),
+  requestId: text("request_id")
+    .notNull()
+    .references(() => backgroundChecks.id),
+  integrationSettingId: text("integration_setting_id").references(
+    () => integrationSettings.id,
+  ),
+  methodName: text("method_name").notNull(),
+  status: integrationStatusEnum("status").notNull().default("pending"),
+  rawData: jsonb("raw_data").$type<Record<string, any>>(),
+  requestBody: jsonb("request_body").$type<Record<string, any>>(),
+  pinpp: text("pinpp"),
+  searchCriteria: jsonb("search_criteria").$type<Record<string, any>>(),
+  recordIds: jsonb("record_ids").$type<string[]>().default([]),
+  errorMessage: text("error_message"),
+  errorCode: text("error_code"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertIntegrationSchema = createInsertSchema(integrations);
+export const selectIntegrationSchema = createSelectSchema(integrations);
+
+export type InsertIntegration = z.infer<typeof insertIntegrationSchema>;
+export type SelectIntegration = z.infer<typeof selectIntegrationSchema>;
+
+// ---------------------------------------------------------------------------
+// eGov Tokens — OAuth2 token storage
+// ---------------------------------------------------------------------------
+
+export const egovTokens = pgTable("egov_tokens", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => uuidv7()),
+  serviceName: text("service_name").notNull(),
+  accessToken: text("access_token").notNull(),
+  accessTokenExpiresAt: timestamp("access_token_expires_at").notNull(),
+  expiresIn: integer("expires_in").notNull(),
+  tokenType: text("token_type").notNull().default("Bearer"),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertEgovTokenSchema = createInsertSchema(egovTokens);
+export const selectEgovTokenSchema = createSelectSchema(egovTokens);
+
+export type InsertEgovToken = z.infer<typeof insertEgovTokenSchema>;
+export type SelectEgovToken = z.infer<typeof selectEgovTokenSchema>;
+
+// ---------------------------------------------------------------------------
+// Record Types — Record type definitions (e.g. "passport_info", "address_info")
+// ---------------------------------------------------------------------------
+
+export const recordTypes = pgTable("record_types", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => uuidv7()),
+  name: text("name").notNull(),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  allowMultiple: boolean("allow_multiple").notNull().default(false),
+  allowedOwners: integer("allowed_owners").notNull().default(1),
+  icon: text("icon"),
+  tags: jsonb("tags").$type<string[]>().default([]),
+  jsonSchema: jsonb("json_schema").$type<Record<string, any>>(),
+  completedJsonSchema: jsonb("completed_json_schema").$type<
+    Record<string, any>
+  >(),
+  settings: jsonb("settings").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertRecordTypeSchema = createInsertSchema(recordTypes);
+export const selectRecordTypeSchema = createSelectSchema(recordTypes);
+
+export type InsertRecordType = z.infer<typeof insertRecordTypeSchema>;
+export type SelectRecordType = z.infer<typeof selectRecordTypeSchema>;
+
+// ---------------------------------------------------------------------------
+// Records — Generic records created from integration results
+// ---------------------------------------------------------------------------
+
+export const records = pgTable("records", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => uuidv7()),
+  userId: text("user_id").references(() => users.id),
+  recordTypeId: text("record_type_id")
+    .notNull()
+    .references(() => recordTypes.id),
+  pinpp: text("pinpp").notNull(),
+  data: jsonb("data").$type<Record<string, any>>().notNull().default({}),
+  attachments: jsonb("attachments").$type<any[]>(),
+  completedAt: timestamp("completed_at"),
+  completedBy: text("completed_by"),
+  lockedAt: timestamp("locked_at"),
+  lockedBy: text("locked_by"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertRecordSchema = createInsertSchema(records);
+export const selectRecordSchema = createSelectSchema(records);
+
+export type InsertRecord = z.infer<typeof insertRecordSchema>;
+export type SelectRecord = z.infer<typeof selectRecordSchema>;
+
+// ---------------------------------------------------------------------------
+// Record History — Audit trail for records
+// ---------------------------------------------------------------------------
+
+export const recordHistory = pgTable("record_history", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => uuidv7()),
+  recordId: text("record_id")
+    .notNull()
+    .references(() => records.id),
+  recordTypeId: text("record_type_id")
+    .notNull()
+    .references(() => recordTypes.id),
+  action: recordHistoryActionEnum("action").notNull(),
+  data: jsonb("data").$type<Record<string, any>>().notNull().default({}),
+  attachments: jsonb("attachments").$type<any[]>(),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertRecordHistorySchema = createInsertSchema(recordHistory);
+export const selectRecordHistorySchema = createSelectSchema(recordHistory);
+
+export type InsertRecordHistory = z.infer<typeof insertRecordHistorySchema>;
+export type SelectRecordHistory = z.infer<typeof selectRecordHistorySchema>;
+
+// ---------------------------------------------------------------------------
+// Event Handlers — JSON-configured event processing pipelines
+// ---------------------------------------------------------------------------
+
+export interface EventHandlerTrigger {
+  sourceSystem: string;
+  event: string;
+  conditions?: Record<string, any>;
+}
+
+export interface EventHandlerAction {
+  name: string;
+  settings: Record<string, any>;
+}
+
+export const eventHandlers = pgTable("event_handlers", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => uuidv7()),
+  name: text("name"),
+  description: text("description"),
+  tags: jsonb("tags").$type<string[]>().default([]),
+  triggers: jsonb("triggers")
+    .$type<EventHandlerTrigger[]>()
+    .notNull()
+    .default([]),
+  actions: jsonb("actions").$type<EventHandlerAction[]>().notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertEventHandlerSchema = createInsertSchema(eventHandlers);
+export const selectEventHandlerSchema = createSelectSchema(eventHandlers);
+
+export type InsertEventHandler = z.infer<typeof insertEventHandlerSchema>;
+export type SelectEventHandler = z.infer<typeof selectEventHandlerSchema>;

@@ -1,10 +1,19 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { DatabaseModule } from '@workflow/database';
+import { TemporalModule } from './temporal/temporal.module';
+import { BackgroundChecksModule } from './background-checks/background-checks.module';
+import { IntegrationSettingsModule } from './integration-settings/integration-settings.module';
+import { RecordsModule } from './records/records.module';
+import { EventHandlersModule } from './event-handlers/event-handlers.module';
 
 @Module({
-  imports: [],
-  controllers: [AppController],
-  providers: [AppService],
+  imports: [
+    DatabaseModule,
+    TemporalModule,
+    BackgroundChecksModule,
+    IntegrationSettingsModule,
+    RecordsModule,
+    EventHandlersModule,
+  ],
 })
 export class AppModule {}

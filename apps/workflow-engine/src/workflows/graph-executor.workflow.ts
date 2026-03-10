@@ -130,6 +130,7 @@ export async function executeFlowGraph(input: FlowInput) {
 
   // Cancel / Pause flags
   let cancellationRequested = false;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let cancellationReason: string | undefined;
   let paused = false;
 
