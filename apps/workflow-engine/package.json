@@ -30,6 +30,7 @@
     "@temporalio/worker": "catalog:",
     "@temporalio/workflow": "catalog:",
     "@workflow/database": "workspace:*",
+    "@workflow/integrations": "workspace:*",
     "drizzle-orm": "catalog:",
     "mingo": "catalog:",
     "pg": "catalog:",

@@ -5,6 +5,11 @@ import {
   type PollingConfig,
   type IntegrationStatus,
 } from '@workflow/database';
+import {
+  IntegrationFactory,
+  type IntegrationRequest,
+  type IntegrationSettingConfig,
+} from '@workflow/integrations';
 import { getDb } from './db';
 import { getByPath, replacePlaceholders } from './helpers';
 
@@ -21,6 +26,16 @@ export interface IntegrationSettingParam {
   requiresAuth: boolean;
   pollingConfig?: PollingConfig | null;
   responseMapping?: Record<string, string> | null;
+}
+
+// Singleton factory per worker process
+let factory: IntegrationFactory | null = null;
+
+function getFactory(): IntegrationFactory {
+  if (!factory) {
+    factory = new IntegrationFactory();
+  }
+  return factory;
 }
 
 export async function createIntegrationRecord(input: {
@@ -64,15 +79,90 @@ export async function executeIntegrationCall(input: {
   const database = getDb();
   const { setting, searchCriteria, parentResponse, token } = input;
 
+  const registry = getFactory().getRegistry();
+  const service = registry.resolve(setting.methodName);
+
+  await database
+    .update(integrations)
+    .set({ status: 'running', updatedAt: new Date() })
+    .where(eq(integrations.id, input.integrationId));
+
+  // Delegate to OOP service class if registered
+  if (service) {
+    const request: IntegrationRequest = {
+      methodName: setting.methodName,
+      searchCriteria,
+      parentResponse,
+      token,
+      setting: setting as IntegrationSettingConfig,
+    };
+
+    const result = await service.execute(request);
+
+    if (result.status === 'success') {
+      await database
+        .update(integrations)
+        .set({
+          status: 'success',
+          rawData: result.rawHttpData,
+          updatedAt: new Date(),
+        })
+        .where(eq(integrations.id, input.integrationId));
+
+      return {
+        integrationId: input.integrationId,
+        status: 'success',
+        rawData: result.rawHttpData,
+      };
+    }
+
+    await database
+      .update(integrations)
+      .set({
+        status: result.status as IntegrationStatus,
+        errorMessage: result.error?.message,
+        errorCode: result.error?.code,
+        updatedAt: new Date(),
+      })
+      .where(eq(integrations.id, input.integrationId));
+
+    return {
+      integrationId: input.integrationId,
+      status: result.status,
+      errorMessage: result.error?.message,
+    };
+  }
+
+  // Legacy fallback for unregistered methods
+  return legacyExecute(input, database);
+}
+
+// ── Legacy inline execution (fallback) ────────────────────────────────────
+
+async function legacyExecute(
+  input: {
+    integrationId: string;
+    setting: IntegrationSettingParam;
+    searchCriteria: Record<string, unknown>;
+    parentResponse?: Record<string, unknown>;
+    token?: { accessToken: string; tokenType: string };
+  },
+  database: ReturnType<typeof getDb>,
+): Promise<{
+  integrationId: string;
+  status: string;
+  rawData?: Record<string, unknown>;
+  errorMessage?: string;
+}> {
+  const { setting, searchCriteria, parentResponse, token } = input;
+
   try {
-    // Build request body from template
     let requestBody = (
       setting.defaultBody
         ? replacePlaceholders(setting.defaultBody, searchCriteria)
         : {}
     ) as Record<string, unknown>;
 
-    // Map parent response fields to child request
     if (parentResponse && setting.responseMapping) {
       for (const [targetField, sourcePath] of Object.entries(
         setting.responseMapping,
@@ -99,11 +189,6 @@ export async function executeIntegrationCall(input: {
       headers['Authorization'] = `${token.tokenType} ${token.accessToken}`;
     }
 
-    await database
-      .update(integrations)
-      .set({ status: 'running', updatedAt: new Date() })
-      .where(eq(integrations.id, input.integrationId));
-
     const method = setting.httpMethod.toLowerCase() as HttpMethod;
     const axiosConfig = {
       method,
@@ -115,7 +200,6 @@ export async function executeIntegrationCall(input: {
 
     let response = await axios(axiosConfig);
 
-    // Handle polling if configured
     if (setting.pollingConfig) {
       const { intervalMs, maxAttempts, successCondition } =
         setting.pollingConfig;

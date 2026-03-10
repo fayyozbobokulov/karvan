@@ -428,6 +428,9 @@ importers:
       '@workflow/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@workflow/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.1(@types/pg@8.16.0)(pg@8.18.0)
@@ -586,6 +589,19 @@ importers:
       typescript-eslint:
         specifier: 'catalog:'
         version: 8.54.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
+
+  packages/integrations:
+    dependencies:
+      axios:
+        specifier: ^1.13.4
+        version: 1.13.4
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.9
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
 
   packages/typescript-config: {}
 
